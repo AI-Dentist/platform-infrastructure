@@ -1,0 +1,749 @@
+openapi: 3.0.3
+info:
+  title: MS2 - Microservicio de Expediente Clínico Odontológico e IA
+  description: >-
+    Contrato REST del microservicio de expediente médico, consultas clínicas, odontogramas,
+    recetas, planes de tratamiento y asistencia diagnóstica con IA.
+  version: 1.1.0
+  contact:
+    name: Henry (Desarrollador Responsable - NestJS + MongoDB)
+servers:
+  - url: http://localhost/api/expediente
+    description: A través del API Gateway (Nginx)
+  - url: http://127.0.0.1:3001/api/expediente
+    description: Acceso directo al microservicio local (NestJS)
+
+paths:
+  /health:
+    get:
+      summary: Comprobación de salud y conexión a MongoDB
+      operationId: getExpedienteHealth
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Microservicio y base de datos MongoDB operativos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpedienteHealthResponse'
+
+  /historias-clinicas:
+    get:
+      summary: Listar o buscar expedientes odontológicos
+      operationId: buscarHistoriasClinicas
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: pacienteId
+          in: query
+          required: false
+          description: Filtrar por identificador canónico UUID del paciente
+          schema:
+            type: string
+            format: uuid
+            example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d'
+      responses:
+        '200':
+          description: Expedientes encontrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HistoriaClinicaDTO'
+
+    post:
+      summary: Crear apertura de expediente clínico
+      operationId: crearHistoriaClinica
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearHistoriaClinicaDTO'
+      responses:
+        '201':
+          description: Expediente creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoriaClinicaDTO'
+        '422':
+          description: Error de validación clínica
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /historias-clinicas/{historiaClinicaId}:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Obtener detalle de historia clínica"
+      operationId: getHistoriaClinicaPorId
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: historiaClinicaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+      responses:
+        '200':
+          description: Detalle del expediente clínico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoriaClinicaDTO'
+        '404':
+          description: Historia clínica no encontrada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /consultas:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Listar consultas médicas por expediente"
+      operationId: listarConsultas
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: historiaClinicaId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+      responses:
+        '200':
+          description: Lista de atenciones y evoluciones clínicas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConsultaClinicaDTO'
+
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Registrar nueva consulta clínica / evolución"
+      description: Asocia diagnóstico, anamnesis actual y notas SOAP a la historia clínica.
+      operationId: registrarConsulta
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearConsultaDTO'
+      responses:
+        '201':
+          description: Consulta registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultaClinicaDTO'
+        '422':
+          description: Validación de datos de atención fallida
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /odontogramas/{historiaClinicaId}:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Consultar odontograma actual"
+      description: Retorna el mapa dental bajo nomenclatura FDI con el estado de piezas y superficies.
+      operationId: getOdontograma
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: historiaClinicaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+      responses:
+        '200':
+          description: Odontograma dental actual
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OdontogramaDTO'
+        '404':
+          description: Odontograma no encontrado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    put:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Actualizar estado del odontograma"
+      description: Actualización completa del mapa dental del paciente tras hallazgos clínicos.
+      operationId: actualizarOdontograma
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+        - name: historiaClinicaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualizarOdontogramaDTO'
+      responses:
+        '200':
+          description: Odontograma actualizado con éxito
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OdontogramaDTO'
+        '422':
+          description: Nomenclatura o superficies no válidas
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /recetas:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Listar recetas médicas emitidas"
+      operationId: listarRecetas
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: historiaClinicaId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de prescripciones médicas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecetaDTO'
+
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Emitir receta médica odontológica"
+      operationId: emitirReceta
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearRecetaDTO'
+      responses:
+        '201':
+          description: Receta médica emitida correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecetaDTO'
+        '422':
+          description: Error en posología o fármacos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /planes-tratamiento:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Listar planes de tratamiento"
+      operationId: listarPlanesTratamiento
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: historiaClinicaId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Planes de tratamiento del expediente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanTratamientoDTO'
+
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR HENRY] Crear plan de tratamiento"
+      operationId: crearPlanTratamiento
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearPlanTratamientoDTO'
+      responses:
+        '201':
+          description: Plan de tratamiento estructurado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanTratamientoDTO'
+        '422':
+          description: Error en fases o procedimientos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /asistencia-ia/sugerencias:
+    post:
+      summary: Obtener sugerencias diagnósticas y notas estructuradas asistidas por IA
+      description: Endpoint de apoyo clínico mediante modelos procesados o comunicados vía MCP.
+      operationId: generarSugerenciaClinicaIA
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SugerenciaIARequest'
+      responses:
+        '200':
+          description: Recomendaciones y observaciones clínicas generadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SugerenciaIAResponse'
+
+components:
+  parameters:
+    XCorrelationID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Identificador de trazabilidad distribuida para correlacionar logs y peticiones.
+      schema:
+        type: string
+        format: uuid
+        example: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
+
+    XIdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      description: Clave UUID v4 de idempotencia compartida para prevenir operaciones de creación duplicadas.
+      schema:
+        type: string
+        format: uuid
+        example: '7b2d5f8c-9c24-4f0e-b7a4-8f3e5c9b1a2d'
+
+  schemas:
+    ExpedienteHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        database:
+          type: string
+          example: connected
+        service:
+          type: string
+          example: ms2-expediente-clinico
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+
+    CrearHistoriaClinicaDTO:
+      type: object
+      required:
+        - pacienteId
+        - motivoConsulta
+      properties:
+        pacienteId:
+          type: string
+          format: uuid
+          example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d'
+        motivoConsulta:
+          type: string
+          example: Control odontológico periódico y profilaxis
+        antecedentesMedicos:
+          type: array
+          items:
+            type: string
+          example: ['Alergia a penicilina', 'Hipertensión controlada']
+
+    HistoriaClinicaDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        codigoHistoria:
+          type: string
+          example: HCO-2026-00012
+        pacienteId:
+          type: string
+          format: uuid
+          example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d'
+        motivoConsulta:
+          type: string
+          example: Control odontológico periódico y profilaxis
+        antecedentesMedicos:
+          type: array
+          items:
+            type: string
+          example: ['Alergia a penicilina']
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:00:00Z'
+
+    CrearConsultaDTO:
+      type: object
+      required:
+        - historiaClinicaId
+        - odontologoId
+        - motivoAtencion
+        - diagnosticoTexto
+      properties:
+        historiaClinicaId:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        citaId:
+          type: string
+          format: uuid
+          example: '3f2e1d0c-ba98-7654-3210-fedcba987654'
+        odontologoId:
+          type: string
+          format: uuid
+          example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        motivoAtencion:
+          type: string
+          example: Dolor agudo localizado en molar superior derecho
+        examenFisico:
+          type: string
+          example: 'Sensibilidad a la percusión vertical en pieza 16, encía marginal eritematosa.'
+        diagnosticoTexto:
+          type: string
+          example: Pulpitis irreversible sintomática pieza 16 (CIE-10 K04.0)
+        evolucionSOAP:
+          type: object
+          properties:
+            subjetivo:
+              type: string
+              example: Paciente refiere dolor pulsátil nocturno.
+            objetivo:
+              type: string
+              example: Pieza 16 cavidad oclusodistal profunda.
+            analisis:
+              type: string
+              example: Compromiso pulpar evidente.
+            plan:
+              type: string
+              example: Apertura cameral y pulpectomía de urgencia.
+
+    ConsultaClinicaDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '4a3b2c1d-0e9f-8a7b-6c5d-4e3f2a1b0c9d'
+        historiaClinicaId:
+          type: string
+          format: uuid
+        odontologoId:
+          type: string
+          format: uuid
+        fechaConsulta:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+        diagnosticoTexto:
+          type: string
+          example: Pulpitis irreversible sintomática pieza 16
+        motivoAtencion:
+          type: string
+          example: Dolor agudo molar superior derecho
+
+    PiezaDentalDTO:
+      type: object
+      required:
+        - numeroFDI
+        - estadoGeneral
+      properties:
+        numeroFDI:
+          type: integer
+          description: Nomenclatura FDI (11 a 48 adultos, 51 a 85 niños)
+          example: 16
+        estadoGeneral:
+          type: string
+          enum: [SANO, CARIES, OBTURADO, CORONA, ENDODONCIA, AUSENTE, EXODONCIA_INDICADA]
+          example: CARIES
+        superficiesAfectadas:
+          type: array
+          items:
+            type: string
+            enum: [OCLUSAL, VESTIBULAR, MESIAL, DISTAL, LINGUAL, PALATINA]
+          example: [OCLUSAL, DISTAL]
+        observaciones:
+          type: string
+          example: Caries de dentina profunda
+
+    OdontogramaDTO:
+      type: object
+      properties:
+        historiaClinicaId:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        fechaUltimaActualizacion:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+        piezas:
+          type: array
+          items:
+            $ref: '#/components/schemas/PiezaDentalDTO'
+
+    ActualizarOdontogramaDTO:
+      type: object
+      required:
+        - piezas
+      properties:
+        piezas:
+          type: array
+          items:
+            $ref: '#/components/schemas/PiezaDentalDTO'
+
+    ItemRecetaDTO:
+      type: object
+      required:
+        - medicamento
+        - dosis
+        - frecuencia
+        - duracionDias
+      properties:
+        medicamento:
+          type: string
+          example: Ibuprofeno 600mg tabletas
+        dosis:
+          type: string
+          example: 1 tableta
+        frecuencia:
+          type: string
+          example: Cada 8 horas después de alimentos
+        duracionDias:
+          type: integer
+          example: 3
+        indicacionesAdicionales:
+          type: string
+          example: Suspender en caso de molestias gástricas severas.
+
+    CrearRecetaDTO:
+      type: object
+      required:
+        - historiaClinicaId
+        - odontologoId
+        - items
+      properties:
+        historiaClinicaId:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        odontologoId:
+          type: string
+          format: uuid
+          example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRecetaDTO'
+
+    RecetaDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '6f5e4d3c-2b1a-0987-6543-21fedcba0987'
+        historiaClinicaId:
+          type: string
+          format: uuid
+        odontologoId:
+          type: string
+          format: uuid
+        fechaEmision:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:35:00Z'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRecetaDTO'
+
+    ProcedimientoPlanDTO:
+      type: object
+      required:
+        - nombreProcedimiento
+        - ordenSecuencia
+      properties:
+        piezaFDI:
+          type: integer
+          example: 16
+        nombreProcedimiento:
+          type: string
+          example: Endodoncia molar y reconstrucción con perno de fibra
+        fase:
+          type: string
+          enum: [URGENCIA, REHABILITACION, MANTENIMIENTO]
+          example: URGENCIA
+        costoEstimado:
+          type: number
+          format: float
+          example: 120.00
+        ordenSecuencia:
+          type: integer
+          example: 1
+        estado:
+          type: string
+          enum: [PENDIENTE, EN_CURSO, COMPLETADO, CANCELADO]
+          example: PENDIENTE
+
+    CrearPlanTratamientoDTO:
+      type: object
+      required:
+        - historiaClinicaId
+        - titulo
+        - procedimientos
+      properties:
+        historiaClinicaId:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        titulo:
+          type: string
+          example: Rehabilitación Integral Cuadrante 1
+        procedimientos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProcedimientoPlanDTO'
+
+    PlanTratamientoDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '5d4c3b2a-1e0f-9a8b-7c6d-5e4f3a2b1c0d'
+        historiaClinicaId:
+          type: string
+          format: uuid
+        titulo:
+          type: string
+          example: Rehabilitación Integral Cuadrante 1
+        estadoGlobal:
+          type: string
+          enum: [PROPUESTO, APROBADO_PACIENTE, EN_EJECUCION, COMPLETADO]
+          example: PROPUESTO
+        costoTotalEstimado:
+          type: number
+          format: float
+          example: 120.00
+        procedimientos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProcedimientoPlanDTO'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:35:00Z'
+
+    SugerenciaIARequest:
+      type: object
+      required:
+        - historiaClinicaId
+        - observacionesTexto
+      properties:
+        historiaClinicaId:
+          type: string
+          format: uuid
+          example: '8f7e6d5c-4b3a-2109-8765-43210fedcba9'
+        observacionesTexto:
+          type: string
+          example: 'Pieza 16 presenta cambio de coloración y sensibilidad al frío leve.'
+
+    SugerenciaIAResponse:
+      type: object
+      properties:
+        piezasInvolucradas:
+          type: array
+          items:
+            type: integer
+          example: [16]
+        posibleDiagnosticoSugerido:
+          type: string
+          example: Posible caries de esmalte / dentina en pieza 16 a corroborar radiográficamente
+        planTratamientoRecomendado:
+          type: string
+          example: Evaluación radiográfica periapical y restauración estética profiláctica
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          example: 'https://api.odontoclinic.local/errors/validation-error'
+        title:
+          type: string
+          example: Datos clínicos inválidos
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+          example: El identificador del paciente no es válido o está ausente.
+        instance:
+          type: string
+          example: /api/expediente/historias-clinicas
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+        invalidParams:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: piezas[0].numeroFDI
+              reason:
+                type: string
+                example: Debe ser un número de pieza dental FDI válido (11-48, 51-85).

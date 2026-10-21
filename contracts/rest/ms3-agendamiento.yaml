@@ -1,0 +1,583 @@
+openapi: 3.0.3
+info:
+  title: MS3 - Microservicio de Agendamiento, Citas y Stock Odontológico
+  description: >-
+    Contrato REST del microservicio de gestión de agenda, disponibilidad horaria de sillones
+    odontológicos, citas de pacientes e inventario de stock clínico.
+  version: 1.1.0
+  contact:
+    name: Wendy (Desarrolladora Responsable - Laravel + DynamoDB)
+servers:
+  - url: http://localhost/api/agendamiento
+    description: A través del API Gateway (Nginx)
+  - url: http://127.0.0.1:8001/api/agendamiento
+    description: Acceso directo al microservicio local (Laravel)
+
+paths:
+  /health:
+    get:
+      summary: Comprobación de salud del microservicio Laravel
+      operationId: getAgendamientoHealth
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Servicio de agendamiento operativo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendamientoHealthResponse'
+
+  /citas:
+    get:
+      summary: Listado y filtro de citas odontológicas
+      operationId: listarCitas
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: fecha
+          in: query
+          required: false
+          description: Fecha de citas en formato YYYY-MM-DD
+          schema:
+            type: string
+            format: date
+            example: '2026-10-22'
+        - name: odontologoId
+          in: query
+          required: false
+          description: Identificador canónico UUID del odontólogo
+          schema:
+            type: string
+            format: uuid
+            example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+      responses:
+        '200':
+          description: Lista de citas agendadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CitaDTO'
+
+    post:
+      summary: Reservar una nueva cita odontológica
+      operationId: crearCita
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearCitaDTO'
+      responses:
+        '201':
+          description: Cita creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitaDTO'
+        '409':
+          description: Conflicto de horario (sillón u odontólogo ocupado)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '422':
+          description: Error de validación de campos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /citas/{citaId}:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Obtener detalle de una cita"
+      operationId: getCitaPorId
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: citaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: '3f2e1d0c-ba98-7654-3210-fedcba987654'
+      responses:
+        '200':
+          description: Información de la cita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitaDTO'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /citas/{citaId}/estado:
+    patch:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Actualizar estado de una cita"
+      description: Permite confirmar, cancelar o marcar la cita en atención/completada.
+      operationId: cambiarEstadoCita
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+        - name: citaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarEstadoCitaDTO'
+      responses:
+        '200':
+          description: Estado de cita actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitaDTO'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Transición de estado no permitida
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /disponibilidad:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Consultar turnos y horarios disponibles"
+      description: Retorna los slots de tiempo libres para agendamiento según odontólogo y fecha.
+      operationId: consultarDisponibilidad
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: odontologoId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        - name: fecha
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: '2026-10-22'
+      responses:
+        '200':
+          description: Disponibilidad de turnos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisponibilidadResponse'
+        '422':
+          description: Fecha o parámetros inválidos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /stock/insumos:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Listar inventario de insumos clínicos"
+      description: Catálogo de materiales odontológicos, niveles de stock actual y umbrales mínimos.
+      operationId: listarInsumosStock
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - name: categoria
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ANESTESIA, RESTAURACION, PROTECCION, INSTRUMENTAL, GENERAL]
+            example: ANESTESIA
+      responses:
+        '200':
+          description: Lista de insumos en stock
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InsumoStockDTO'
+
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Dar de alta nuevo insumo en inventario"
+      operationId: crearInsumoStock
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearInsumoDTO'
+      responses:
+        '201':
+          description: Insumo creado en stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsumoStockDTO'
+        '409':
+          description: Código o SKU de insumo duplicado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /stock/movimientos:
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Registrar entrada o salida de insumo"
+      description: Registra consumo en sillón/consulta o ingreso por reposición de compras.
+      operationId: registrarMovimientoStock
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarMovimientoStockDTO'
+      responses:
+        '201':
+          description: Movimiento registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovimientoStockDTO'
+        '422':
+          description: Stock insuficiente o cantidad inválida
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /stock/alertas:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR WENDY] Consultar alertas de stock crítico"
+      description: Insumos cuya cantidad disponible es menor o igual al stock mínimo configurado.
+      operationId: getAlertasStock
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Insumos que requieren reabastecimiento urgente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InsumoStockDTO'
+
+components:
+  parameters:
+    XCorrelationID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Identificador de trazabilidad distribuida para correlacionar logs y peticiones.
+      schema:
+        type: string
+        format: uuid
+        example: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
+
+    XIdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      description: Clave UUID v4 de idempotencia compartida para prevenir operaciones de creación duplicadas.
+      schema:
+        type: string
+        format: uuid
+        example: '7b2d5f8c-9c24-4f0e-b7a4-8f3e5c9b1a2d'
+
+  schemas:
+    AgendamientoHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        database:
+          type: string
+          example: connected-dynamodb
+        service:
+          type: string
+          example: ms3-agendamiento
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+
+    CrearCitaDTO:
+      type: object
+      required:
+        - pacienteId
+        - odontologoId
+        - fechaHoraInicio
+        - duracionMinutos
+      properties:
+        pacienteId:
+          type: string
+          format: uuid
+          example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d'
+        odontologoId:
+          type: string
+          format: uuid
+          example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        sillonNumero:
+          type: integer
+          example: 1
+        fechaHoraInicio:
+          type: string
+          format: date-time
+          example: '2026-10-22T09:30:00Z'
+        duracionMinutos:
+          type: integer
+          example: 45
+        motivo:
+          type: string
+          example: Limpieza dental y revisión preventiva
+
+    CitaDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '3f2e1d0c-ba98-7654-3210-fedcba987654'
+        codigoCita:
+          type: string
+          example: CIT-2026-000101
+        pacienteId:
+          type: string
+          format: uuid
+        odontologoId:
+          type: string
+          format: uuid
+        sillonNumero:
+          type: integer
+          example: 1
+        fechaHoraInicio:
+          type: string
+          format: date-time
+          example: '2026-10-22T09:30:00Z'
+        duracionMinutos:
+          type: integer
+          example: 45
+        estado:
+          type: string
+          enum: [PROGRAMADA, CONFIRMADA, EN_ATENCION, COMPLETADA, CANCELADA, NO_ASISTIO]
+          example: PROGRAMADA
+        motivoCancelacion:
+          type: string
+          example: null
+
+    CambiarEstadoCitaDTO:
+      type: object
+      required:
+        - nuevoEstado
+      properties:
+        nuevoEstado:
+          type: string
+          enum: [CONFIRMADA, EN_ATENCION, COMPLETADA, CANCELADA, NO_ASISTIO]
+          example: CANCELADA
+        motivo:
+          type: string
+          example: Paciente solicitó postergación de turno por viaje imprevisto.
+
+    SlotHorarioDTO:
+      type: object
+      properties:
+        horaInicio:
+          type: string
+          example: '09:00'
+        horaFin:
+          type: string
+          example: '09:45'
+        disponible:
+          type: boolean
+          example: true
+
+    DisponibilidadResponse:
+      type: object
+      properties:
+        odontologoId:
+          type: string
+          format: uuid
+          example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        fecha:
+          type: string
+          format: date
+          example: '2026-10-22'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotHorarioDTO'
+
+    InsumoStockDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '7c8d9e0f-1a2b-3c4d-5e6f-7a8b9c0d1e2f'
+        codigoSKU:
+          type: string
+          example: MAT-RES-A2
+        nombre:
+          type: string
+          example: Resina Compuesta Nanohíbrida A2 4g
+        categoria:
+          type: string
+          example: RESTAURACION
+        unidadMedida:
+          type: string
+          example: Jeringa
+        cantidadDisponible:
+          type: integer
+          example: 18
+        stockMinimo:
+          type: integer
+          example: 5
+        requiereAlerta:
+          type: boolean
+          example: false
+
+    CrearInsumoDTO:
+      type: object
+      required:
+        - codigoSKU
+        - nombre
+        - categoria
+        - unidadMedida
+        - stockMinimo
+      properties:
+        codigoSKU:
+          type: string
+          example: MAT-ANES-LID2
+        nombre:
+          type: string
+          example: Lidocaína 2% con Epinefrina 1:100.000 (Caja 50 cartuchos)
+        categoria:
+          type: string
+          enum: [ANESTESIA, RESTAURACION, PROTECCION, INSTRUMENTAL, GENERAL]
+          example: ANESTESIA
+        unidadMedida:
+          type: string
+          example: Caja
+        cantidadInicial:
+          type: integer
+          example: 10
+        stockMinimo:
+          type: integer
+          example: 3
+
+    RegistrarMovimientoStockDTO:
+      type: object
+      required:
+        - insumoId
+        - tipoMovimiento
+        - cantidad
+        - motivo
+      properties:
+        insumoId:
+          type: string
+          format: uuid
+          example: '7c8d9e0f-1a2b-3c4d-5e6f-7a8b9c0d1e2f'
+        tipoMovimiento:
+          type: string
+          enum: [ENTRADA_COMPRA, SALIDA_CONSUMO_CONSULTA, SALIDA_VENCIMIENTO, AJUSTE_INVENTARIO]
+          example: SALIDA_CONSUMO_CONSULTA
+        cantidad:
+          type: integer
+          example: 1
+        citaId:
+          type: string
+          format: uuid
+          example: '3f2e1d0c-ba98-7654-3210-fedcba987654'
+        motivo:
+          type: string
+          example: Consumo en restauración estética pieza 16
+
+    MovimientoStockDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d'
+        insumoId:
+          type: string
+          format: uuid
+        tipoMovimiento:
+          type: string
+          example: SALIDA_CONSUMO_CONSULTA
+        cantidad:
+          type: integer
+          example: 1
+        saldoPosterior:
+          type: integer
+          example: 17
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:40:00Z'
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          example: 'https://api.odontoclinic.local/errors/conflict'
+        title:
+          type: string
+          example: Horario no disponible
+        status:
+          type: integer
+          example: 409
+        detail:
+          type: string
+          example: El odontólogo ya cuenta con una cita asignada en el intervalo solicitado.
+        instance:
+          type: string
+          example: /api/agendamiento/citas
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+        invalidParams:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: fechaHoraInicio
+              reason:
+                type: string
+                example: Turno ocupado por otra cita confirmada

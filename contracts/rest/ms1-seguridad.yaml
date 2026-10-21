@@ -1,0 +1,352 @@
+openapi: 3.0.3
+info:
+  title: MS1 - Microservicio de Seguridad y Autenticación
+  description: >-
+    Contrato REST preliminar del microservicio de seguridad, gestión de identidades locales,
+    autenticación y autorización en el sistema médico-odontológico.
+  version: 1.1.0
+  contact:
+    name: Dennis (Desarrollador Responsable - Spring Boot + PostgreSQL)
+servers:
+  - url: http://localhost/api/seguridad
+    description: A través del API Gateway (Nginx)
+  - url: http://127.0.0.1:8081/api/seguridad
+    description: Acceso directo al microservicio local (Spring Boot)
+
+paths:
+  /health:
+    get:
+      summary: Comprobación de salud del microservicio
+      operationId: getHealthStatus
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Microservicio activo y saludable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Microservicio con dependencias caídas
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/login:
+    post:
+      summary: Autenticación de credenciales de usuario
+      description: Emite tokens de acceso JWT y refresco para el personal clínico y administrativo.
+      operationId: loginUsuario
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/refresh:
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS] Renovación de token JWT"
+      description: Permite obtener un nuevo token de acceso a partir de un refresh token vigente.
+      operationId: refreshToken
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token renovado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Refresh token expirado o revocado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/me:
+    get:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS] Perfil del usuario autenticado"
+      description: Retorna la información y roles del usuario activo extraídos del token JWT.
+      operationId: getPerfilUsuarioActual
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Datos del usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioDTO'
+        '401':
+          description: Token ausente o inválido
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /usuarios:
+    get:
+      summary: Listado de usuarios del sistema
+      operationId: listarUsuarios
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+      responses:
+        '200':
+          description: Lista de usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UsuarioDTO'
+        '403':
+          description: Permisos insuficientes (requiere ROLE_ADMIN)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    post:
+      summary: "[PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS] Registro de nuevo usuario"
+      description: Alta de personal odontológico, asistente o administrativo con asignación de roles.
+      operationId: registrarUsuario
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XCorrelationID'
+        - $ref: '#/components/parameters/XIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarUsuarioRequest'
+      responses:
+        '201':
+          description: Usuario registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioDTO'
+        '409':
+          description: Correo electrónico o documento ya registrado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '422':
+          description: Error de validación de campos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XCorrelationID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Identificador de trazabilidad distribuida para correlacionar logs y peticiones.
+      schema:
+        type: string
+        format: uuid
+        example: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
+
+    XIdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      description: Clave UUID v4 de idempotencia compartida para prevenir operaciones de creación duplicadas.
+      schema:
+        type: string
+        format: uuid
+        example: '7b2d5f8c-9c24-4f0e-b7a4-8f3e5c9b1a2d'
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: UP
+        service:
+          type: string
+          example: ms1-seguridad
+        version:
+          type: string
+          example: 1.1.0
+        database:
+          type: string
+          example: connected
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: dentista.demo@clinicadental.local
+        password:
+          type: string
+          format: password
+          example: ClaveSecreta123*
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          example: dGhpcy1pcy1hLXJlZnJlc2gtdG9rZW4...
+
+    AuthTokenResponse:
+      type: object
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          example: dGhpcy1pcy1hLXJlZnJlc2gtdG9rZW4...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 3600
+
+    RegistrarUsuarioRequest:
+      type: object
+      required:
+        - nombreCompleto
+        - email
+        - password
+        - rol
+      properties:
+        nombreCompleto:
+          type: string
+          example: Dr. Dennis Morales
+        email:
+          type: string
+          format: email
+          example: dennis.morales@clinicadental.local
+        password:
+          type: string
+          format: password
+          example: ClaveSegura2026*
+        rol:
+          type: string
+          enum: [DENTISTA, ASISTENTE, RECEPCIONISTA, ADMINISTRADOR]
+          example: DENTISTA
+
+    UsuarioDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 'e28bbd98-1e43-4dc3-9c8e-5b1234567890'
+        nombreCompleto:
+          type: string
+          example: Dennis Morales
+        email:
+          type: string
+          example: dennis.morales@clinicadental.local
+        rol:
+          type: string
+          enum: [DENTISTA, ASISTENTE, RECEPCIONISTA, ADMINISTRADOR]
+          example: DENTISTA
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          example: 'https://api.odontoclinic.local/errors/unauthorized'
+        title:
+          type: string
+          example: Credenciales incorrectas
+        status:
+          type: integer
+          example: 401
+        detail:
+          type: string
+          example: El correo o la contraseña proporcionada no coinciden con nuestros registros.
+        instance:
+          type: string
+          example: /api/seguridad/auth/login
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-21T18:30:00Z'
+        invalidParams:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: email
+              reason:
+                type: string
+                example: Formato no válido

@@ -1,0 +1,327 @@
+"""
+Esquema GraphQL propuesto para el módulo ERP, Finanzas y Administración Odontológica.
+Microservicio: MS1 (Spring Boot + PostgreSQL - Dennis)
+Puerto local: 8081
+Endpoint propuesto: POST /graphql (o /api/erp/graphql a través del Gateway Nginx)
+Estado: [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+"""
+
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+# -----------------------------------------------------------------------------
+# QUERIES
+# -----------------------------------------------------------------------------
+
+type Query {
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Obtiene el detalle de una factura por su identificador UUID.
+  """
+  factura(id: ID!): Factura
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Consulta paginada de facturas emitidas con filtros por cliente/paciente, estado y rango de fechas.
+  """
+  facturas(filtro: FiltroFacturaInput, paginacion: PaginacionInput): FacturaConnection!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Calcula o consulta la liquidación de honorarios y comisiones de un odontólogo para un periodo (YYYY-MM).
+  """
+  liquidacionesOdontologo(odontologoId: ID!, periodo: String!): [LiquidacionOdontologo!]!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Reporte de balance financiero de ingresos, egresos y utilidad operativa de la clínica en un periodo.
+  """
+  balanceFinanciero(periodo: String!): BalanceFinanciero!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Catálogo de proveedores de insumos y equipamiento médico.
+  """
+  proveedores(activo: Boolean): [Proveedor!]!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Listado de órdenes de compra para abastecimiento clínico.
+  """
+  ordenesCompra(estado: EstadoOrdenCompra): [OrdenCompra!]!
+}
+
+# -----------------------------------------------------------------------------
+# MUTATIONS
+# -----------------------------------------------------------------------------
+
+type Mutation {
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Genera una factura por tratamientos odontológicos o consultas realizadas.
+  Soporta idempotencia mediante el campo `idempotencyKey` o el header `X-Idempotency-Key`.
+  """
+  generarFactura(input: GenerarFacturaInput!): FacturaPayload!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Registra el pago total o parcial de una factura existente.
+  """
+  registrarPago(input: RegistrarPagoInput!): PagoPayload!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Cierra y aprueba la liquidación de honorarios a un profesional odontólogo.
+  """
+  liquidarHonorarios(input: LiquidarHonorariosInput!): LiquidacionPayload!
+
+  """
+  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
+  Crea una orden de compra para abastecer stock de insumos clínicos.
+  """
+  crearOrdenCompra(input: CrearOrdenCompraInput!): OrdenCompraPayload!
+}
+
+# -----------------------------------------------------------------------------
+# ENUMS
+# -----------------------------------------------------------------------------
+
+enum EstadoFactura {
+  BORRADOR
+  EMITIDA
+  PAGADA
+  PAGADA_PARCIAL
+  ANULADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA_DEBITO
+  TARJETA_CREDITO
+  TRANSFERENCIA_BANCARIA
+  SEGURO_MEDICO
+}
+
+enum EstadoLiquidacion {
+  PENDIENTE
+  APROBADA
+  PAGADA
+  RECHAZADA
+}
+
+enum EstadoOrdenCompra {
+  SOLICITADA
+  APROBADA
+  RECIBIDA
+  CANCELADA
+}
+
+# -----------------------------------------------------------------------------
+# TIPOS DE DOMINIO: FACTURACIÓN Y FINANZAS
+# -----------------------------------------------------------------------------
+
+type Factura {
+  id: ID!
+  numeroFactura: String!
+  pacienteId: ID!
+  citaId: ID
+  fechaEmision: String!
+  estado: EstadoFactura!
+  subtotal: Float!
+  impuesto: Float!
+  descuento: Float!
+  total: Float!
+  saldoPendiente: Float!
+  items: [DetalleFactura!]!
+  pagos: [PagoFactura!]!
+}
+
+type DetalleFactura {
+  id: ID!
+  descripcion: String!
+  codigoProcedimiento: String
+  cantidad: Int!
+  precioUnitario: Float!
+  subtotal: Float!
+}
+
+type PagoFactura {
+  id: ID!
+  fechaPago: String!
+  monto: Float!
+  metodo: MetodoPago!
+  referenciaTransaccion: String
+}
+
+type LiquidacionOdontologo {
+  id: ID!
+  odontologoId: ID!
+  periodo: String!
+  totalAtenciones: Int!
+  montoFacturadoBruto: Float!
+  porcentajeComision: Float!
+  montoComisionPagar: Float!
+  retenciones: Float!
+  montoNetoPagar: Float!
+  estado: EstadoLiquidacion!
+  fechaAprobacion: String
+}
+
+type BalanceFinanciero {
+  periodo: String!
+  ingresosTotales: Float!
+  egresosTotales: Float!
+  utilidadOperativa: Float!
+  ingresosPorMetodo: [IngresoMetodoDTO!]!
+  gastosPorCategoria: [GastoCategoriaDTO!]!
+}
+
+type IngresoMetodoDTO {
+  metodo: MetodoPago!
+  monto: Float!
+}
+
+type GastoCategoriaDTO {
+  categoria: String!
+  monto: Float!
+}
+
+# -----------------------------------------------------------------------------
+# TIPOS DE DOMINIO: COMPRAS Y PROVEEDORES
+# -----------------------------------------------------------------------------
+
+type Proveedor {
+  id: ID!
+  numeroRUT: String!
+  razonSocial: String!
+  nombreContacto: String
+  telefono: String
+  email: String!
+  activo: Boolean!
+}
+
+type OrdenCompra {
+  id: ID!
+  codigoOrden: String!
+  proveedor: Proveedor!
+  fechaEmision: String!
+  fechaEntregaEstimada: String
+  estado: EstadoOrdenCompra!
+  totalEstimado: Float!
+  items: [DetalleOrdenCompra!]!
+}
+
+type DetalleOrdenCompra {
+  insumoId: ID!
+  nombreInsumo: String!
+  cantidadSolicitada: Int!
+  precioUnitarioEstimado: Float!
+  subtotal: Float!
+}
+
+# -----------------------------------------------------------------------------
+# PAGINACIÓN
+# -----------------------------------------------------------------------------
+
+input PaginacionInput {
+  pagina: Int = 1
+  limite: Int = 10
+}
+
+type PageInfo {
+  paginaActual: Int!
+  totalPaginas: Int!
+  totalRegistros: Int!
+  tienePaginaSiguiente: Boolean!
+}
+
+type FacturaConnection {
+  items: [Factura!]!
+  pageInfo: PageInfo!
+}
+
+# -----------------------------------------------------------------------------
+# INPUTS Y PAYLOADS (MUTATIONS)
+# -----------------------------------------------------------------------------
+
+input FiltroFacturaInput {
+  pacienteId: ID
+  estado: EstadoFactura
+  fechaDesde: String
+  fechaHasta: String
+}
+
+input DetalleFacturaInput {
+  descripcion: String!
+  codigoProcedimiento: String
+  cantidad: Int!
+  precioUnitario: Float!
+}
+
+input GenerarFacturaInput {
+  """Clave UUID v4 de idempotencia obligatoria para evitar facturación duplicada."""
+  idempotencyKey: String!
+  pacienteId: ID!
+  citaId: ID
+  items: [DetalleFacturaInput!]!
+  descuento: Float = 0.0
+}
+
+type FacturaPayload {
+  exito: Boolean!
+  mensaje: String!
+  factura: Factura
+}
+
+input RegistrarPagoInput {
+  """Clave UUID v4 de idempotencia."""
+  idempotencyKey: String!
+  facturaId: ID!
+  monto: Float!
+  metodo: MetodoPago!
+  referenciaTransaccion: String
+}
+
+type PagoPayload {
+  exito: Boolean!
+  mensaje: String!
+  factura: Factura
+  pago: PagoFactura
+}
+
+input LiquidarHonorariosInput {
+  """Clave UUID v4 de idempotencia."""
+  idempotencyKey: String!
+  odontologoId: ID!
+  periodo: String!
+  porcentajeComision: Float!
+}
+
+type LiquidacionPayload {
+  exito: Boolean!
+  mensaje: String!
+  liquidacion: LiquidacionOdontologo
+}
+
+input DetalleOrdenCompraInput {
+  insumoId: ID!
+  nombreInsumo: String!
+  cantidadSolicitada: Int!
+  precioUnitarioEstimado: Float!
+}
+
+input CrearOrdenCompraInput {
+  """Clave UUID v4 de idempotencia."""
+  idempotencyKey: String!
+  proveedorId: ID!
+  fechaEntregaEstimada: String
+  items: [DetalleOrdenCompraInput!]!
+}
+
+type OrdenCompraPayload {
+  exito: Boolean!
+  mensaje: String!
+  ordenCompra: OrdenCompra
+}

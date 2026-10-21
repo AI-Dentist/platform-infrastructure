@@ -1,0 +1,72 @@
+{
+  "realm": "odontoclinic-realm",
+  "displayName": "Sistema Medico Odontologico",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Administrador general del sistema"
+      },
+      {
+        "name": "ROLE_DENTISTA",
+        "description": "Profesional odontologo con acceso clinico"
+      },
+      {
+        "name": "ROLE_ASISTENTE",
+        "description": "Asistente dental o higienista"
+      },
+      {
+        "name": "ROLE_RECEPCIONISTA",
+        "description": "Personal de recepcion y agendamiento"
+      },
+      {
+        "name": "ROLE_PACIENTE",
+        "description": "Paciente con acceso al portal de citas"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "web-portal-frontend",
+      "name": "Portal Web Microfrontends",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "+"
+      ]
+    },
+    {
+      "clientId": "ms1-seguridad-service",
+      "name": "Microservicio MS1 Seguridad",
+      "enabled": true,
+      "bearerOnly": true
+    },
+    {
+      "clientId": "ms2-expediente-service",
+      "name": "Microservicio MS2 Expediente Clinico",
+      "enabled": true,
+      "bearerOnly": true
+    },
+    {
+      "clientId": "ms3-agendamiento-service",
+      "name": "Microservicio MS3 Agendamiento",
+      "enabled": true,
+      "bearerOnly": true
+    }
+  ]
+}

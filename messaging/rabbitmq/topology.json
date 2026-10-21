@@ -1,0 +1,100 @@
+{
+  "rabbit_version": "3.12.0",
+  "vhosts": [
+    {
+      "name": "/odontoclinic"
+    }
+  ],
+  "users": [
+    {
+      "name": "odontoclinic_app",
+      "password_hash": "placeholder_for_future_setup",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "management"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "odontoclinic_app",
+      "vhost": "/odontoclinic",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "odontoclinic.events",
+      "vhost": "/odontoclinic",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "odontoclinic.dlx",
+      "vhost": "/odontoclinic",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "ms2.cita-notificacion.queue",
+      "vhost": "/odontoclinic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "odontoclinic.dlx"
+      }
+    },
+    {
+      "name": "ms3.seguridad-sync.queue",
+      "vhost": "/odontoclinic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "odontoclinic.dlx"
+      }
+    },
+    {
+      "name": "ms3.cita-completada.queue",
+      "vhost": "/odontoclinic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "odontoclinic.dlx"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "odontoclinic.events",
+      "vhost": "/odontoclinic",
+      "destination": "ms2.cita-notificacion.queue",
+      "destination_type": "queue",
+      "routing_key": "agendamiento.cita.*",
+      "arguments": {}
+    },
+    {
+      "source": "odontoclinic.events",
+      "vhost": "/odontoclinic",
+      "destination": "ms3.seguridad-sync.queue",
+      "destination_type": "queue",
+      "routing_key": "seguridad.usuario.*",
+      "arguments": {}
+    },
+    {
+      "source": "odontoclinic.events",
+      "vhost": "/odontoclinic",
+      "destination": "ms3.cita-completada.queue",
+      "destination_type": "queue",
+      "routing_key": "expediente.evolucion.*",
+      "arguments": {}
+    }
+  ]
+}
