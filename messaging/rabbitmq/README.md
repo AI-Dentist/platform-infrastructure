@@ -5,6 +5,46 @@
 
 ---
 
+## ERP: topología adicional, no migración de la existente
+
+`topology.json` conserva sin cambios `/odontoclinic`, `odontoclinic.events`, `odontoclinic.dlx`, sus colas y bindings. Las secciones históricas siguientes no describen la API efectiva del ERP; en particular, el sobre genérico de la sección 3 **no aplica al ERP**.
+
+[topology-erp.json](topology-erp.json) describe por separado los defaults de `RabbitMQConfig` y `application.yml` del backend publicado `c6abae67109719113a2767e547ff0fce5553c740`. Es un artefacto declarativo, no un despliegue ejecutado. No contiene usuarios ni permisos; su provisión requiere autorización independiente.
+
+| Recurso ERP | Valor predeterminado |
+|---|---|
+| Vhost | `/` (default Spring AMQP; el YAML no declara otro) |
+| Topic exchange durable | `dental.topic.exchange` |
+| Cola durable | `erp.consulta.finalizada.queue` |
+| Binding de entrada | `clinica.consulta.finalizada` |
+| DLX durable, tipo direct | `dental.dlx.exchange` |
+| DLQ durable y clave de dead letter | `erp.consulta.finalizada.dlq` |
+
+La cola declara `x-dead-letter-exchange` y `x-dead-letter-routing-key`; la DLQ se enlaza al DLX con esa misma clave. El listener tiene `spring.rabbitmq.listener.simple.default-requeue-rejected=false`: los mensajes rechazados no se reencolan indefinidamente. No se define un binding de catálogo hacia la cola de consultas.
+
+### Conexión y overrides reales
+
+| Propiedad Spring | Variable/configuración |
+|---|---|
+| `spring.rabbitmq.host` | `ERP_RABBIT_HOST` (default `localhost`) |
+| `spring.rabbitmq.port` | `ERP_RABBIT_PORT` (default `5672`) |
+| `spring.rabbitmq.username` | `ERP_RABBIT_USER` |
+| `spring.rabbitmq.password` | `ERP_RABBIT_PASSWORD` (gestionar como secreto; no guardar valores aquí) |
+| `spring.rabbitmq.virtual-host` | Override estándar `SPRING_RABBITMQ_VIRTUAL_HOST`; default `/` |
+| `erp.messaging.exchange` | `dental.topic.exchange` |
+| `erp.messaging.consulta-finalizada-queue` | `erp.consulta.finalizada.queue` |
+| `erp.messaging.consulta-finalizada-routing-key` | `clinica.consulta.finalizada` |
+| `erp.messaging.dead-letter-exchange` | `dental.dlx.exchange` |
+| `erp.messaging.consulta-finalizada-dlq` | `erp.consulta.finalizada.dlq` |
+
+Las propiedades `erp.messaging.*` pueden sobreescribirse mediante configuración Spring externa (por ejemplo `--erp.messaging.exchange=...`). Si se selecciona otro vhost mediante `SPRING_RABBITMQ_VIRTUAL_HOST` o `--spring.rabbitmq.virtual-host=...`, todos los recursos y bindings ERP deben existir en ese mismo vhost, con permisos apropiados; el JSON entregado representa únicamente `/`. No mezclar automáticamente con `/odontoclinic`. Entre contenedores, `localhost` apunta al propio contenedor: configurar el host accesible del broker.
+
+### Brecha de compatibilidad y aceptación pendiente
+
+El consumidor espera [JSON plano](../../contracts/events/README.md), no el sobre `payload` histórico. No crear bindings entre productores existentes y el ERP sin confirmar formato, semántica, vhost y clave. El productor MS2 y la entrega extremo a extremo permanecen pendientes; tampoco se inventan colas ni bindings consumidores para los seis `catalogo.*`. Sin consumidores enlazados, la publicación obligatoria de catálogo puede retornar `NO_ROUTE` y el outbox seguirá reintentando: no equivale a entrega completada.
+
+Verificación local: `python -m unittest discover -s scripts/tests -p test_events.py -v` comprueba estructura, campos y bindings ERP y preservación de la topología previa. No importa definiciones ni inicia servicios. Faltan una prueba autorizada con broker real, publicación MS2, deduplicación de consultas, DLQ y consumidores de catálogo antes de afirmar integración operativa.
+
 ## 1. Responsabilidades en el Sistema Médico-Odontológico
 
 RabbitMQ actuará como el **Message Broker** del sistema basado en una Arquitectura Dirigida por Eventos (EDA - Event-Driven Architecture), resolviendo desacoplamiento temporal y consistencia eventual:

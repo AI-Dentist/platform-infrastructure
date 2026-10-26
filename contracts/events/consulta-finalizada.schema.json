@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "clinica.consulta.finalizada — entrada plana del ERP",
+  "description": "Derivado de ConsultaFinalizadaPayload y validaciones para una consulta nueva. Deduplicación por consultaId, no eventId. No valida referencias de catálogo ni todas las reglas de dominio; ver README.md.",
+  "type": "object",
+  "required": ["consultaId", "pacienteId", "serviciosRealizados"],
+  "properties": {
+    "eventId": {"type": ["string", "null"], "format": "uuid", "description": "El consumidor no lo usa."},
+    "consultaId": {"type": "string", "format": "uuid"},
+    "citaId": {"type": ["string", "null"], "format": "uuid", "description": "El consumidor no lo usa."},
+    "pacienteId": {"type": "string", "format": "uuid"},
+    "odontologoId": {"type": ["string", "null"], "format": "uuid"},
+    "serviciosRealizados": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["servicioId", "cantidad", "precioUnitarioBs"],
+        "properties": {
+          "servicioId": {"type": "string", "format": "uuid"},
+          "piezaDental": {"type": ["string", "null"], "maxLength": 10},
+          "cantidad": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+          "precioUnitarioBs": {
+            "type": "number",
+            "description": "Bs: Money redondea a dos decimales HALF_UP antes de rechazar montos negativos. No exige múltiplos de 0.01 en la entrada."
+          }
+        }
+      }
+    },
+    "observacionesCobro": {"type": ["string", "null"]}
+  }
+}

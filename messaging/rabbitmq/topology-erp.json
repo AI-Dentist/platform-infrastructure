@@ -1,0 +1,18 @@
+{
+  "vhosts": [{"name": "/"}],
+  "exchanges": [
+    {"name": "dental.topic.exchange", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {}},
+    {"name": "dental.dlx.exchange", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {}}
+  ],
+  "queues": [
+    {
+      "name": "erp.consulta.finalizada.queue", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": {"x-dead-letter-exchange": "dental.dlx.exchange", "x-dead-letter-routing-key": "erp.consulta.finalizada.dlq"}
+    },
+    {"name": "erp.consulta.finalizada.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {}}
+  ],
+  "bindings": [
+    {"source": "dental.topic.exchange", "vhost": "/", "destination": "erp.consulta.finalizada.queue", "destination_type": "queue", "routing_key": "clinica.consulta.finalizada", "arguments": {}},
+    {"source": "dental.dlx.exchange", "vhost": "/", "destination": "erp.consulta.finalizada.dlq", "destination_type": "queue", "routing_key": "erp.consulta.finalizada.dlq", "arguments": {}}
+  ]
+}
