@@ -30,6 +30,7 @@ inventan endpoints health en los servicios existentes.
 | `/mcp` | ERP:8081 `/mcp` | Streamable HTTP: POST/GET/DELETE, no WebSocket |
 | `/api/v1/webhooks/pagofacil` | ERP:8081 misma URI | POST; mock local, no proveedor productivo certificado |
 | `/api/v1/reports/export/{reporteId}/{format}` | ERP:8081 misma URI | GET PDF/XLSX; preserva URLs relativas emitidas por ERP |
+| `/api/seguridad` | Redirect local 301 a `/api/seguridad/` | Conserva query y comportamiento legacy para GET/POST |
 | `/api/seguridad/…` | ERP:8081 misma URI completa | Alias histórico conservado; no inventa API REST ERP |
 | `/api/expediente/…` | MS2:3001 misma URI completa | Sin quitar prefijo |
 | `/api/agendamiento/…` | MS3:8001 misma URI completa | Sin quitar prefijo |
@@ -115,7 +116,8 @@ el intervalo a la política operativa, sin atribuir fallos no reproducidos al
 valor predeterminado de Nginx. No se configura Upgrade/WebSocket.
 
 Las pruebas verifican método, URI, query, body y cabeceras en cada ruta; preservan
-las tres rutas históricas; comprueban bytes y cabeceras PDF/XLSX, preflight,
+las tres rutas históricas, incluidos redirects 301 de prefijos sin barra y sus
+queries para GET/POST; comprueban bytes y cabeceras PDF/XLSX, preflight,
 supresión CORS, eliminación de bypass dev, errores, 404 y 502. Un primer evento
 SSE debe llegar antes de que termine el upstream. La política de timeout se
 explica por su semántica, no se espera 300 segundos en la prueba.

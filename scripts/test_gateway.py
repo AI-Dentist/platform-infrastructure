@@ -194,6 +194,20 @@ class Harness:
         print(f"PASS route {public} -> {internal} ({method}, query/body/headers)")
 
     def legacy(self, baseline=False):
+        # Slashless proxy prefixes historically redirect locally, including POST
+        # and the original query string. No request may reach an upstream here.
+        for prefix in ("/api/seguridad", "/api/expediente", "/api/agendamiento"):
+            for method in ("GET", "POST"):
+                for query in ("", "?a=one%20two&a=3"):
+                    status, headers, body = self.request(method, prefix + query, b"synthetic")
+                    self.check(status == 301, f"{prefix}: redirect legacy esperado 301, recibido {status}")
+                    self.check(dict(headers).get("Location") == "http://127.0.0.1" + prefix + "/" + query,
+                               f"{prefix}: Location/query legacy alterado")
+                    self.check(b"<title>301 Moved Permanently</title>" in body,
+                               f"{prefix}: body de redirect legacy alterado")
+                    self.check(all(server.records.empty() for server in self.servers),
+                               f"{prefix}: redirect alcanzó upstream")
+        print("PASS legacy: redirects sin barra, GET/POST y query preservados")
         for index, path in enumerate(("/api/seguridad/probe", "/api/expediente/probe",
                                       "/api/agendamiento/probe")):
             self.route(path, path, index, strip_dev=(index == 0 and not baseline))
