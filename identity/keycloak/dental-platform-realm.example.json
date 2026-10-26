@@ -1,0 +1,54 @@
+{
+  "realm": "dental-platform",
+  "displayName": "ERP Dental Platform",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      {"name": "ADMIN", "description": "Administracion del ERP"},
+      {"name": "RECEPCIONISTA", "description": "Recepcion del ERP"},
+      {"name": "CAJERO", "description": "Caja del ERP"},
+      {"name": "ODONTOLOGO", "description": "Profesional odontologo del ERP"}
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mf-erp",
+      "name": "Microfrontend ERP",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:4201/*"],
+      "webOrigins": ["http://localhost:4201"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4201/*"
+      },
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "ms-erp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "ms-erp",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
