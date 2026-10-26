@@ -1,0 +1,2 @@
+# Preserve byte identity of the published ERP SDL on Windows.
+/contracts/graphql/ms1-erp.graphql text eol=lf

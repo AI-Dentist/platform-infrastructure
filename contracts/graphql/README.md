@@ -1,156 +1,90 @@
-# Guía de Arquitectura e Integración GraphQL (MS1 - ERP y Finanzas)
+# Contrato efectivo GraphQL del ERP
 
-Este documento describe la especificación técnica, justificación arquitectónica y guía de extensión para el esquema GraphQL propuesto para el módulo de **ERP, Finanzas y Administración** alojado en **MS1** (Dennis - Spring Boot + PostgreSQL).
+El contrato MS1 replica los artefactos canónicos del **main publicado** de
+[ms-erp](https://github.com/AI-Dentist/ms-erp/tree/c6abae67109719113a2767e547ff0fce5553c740),
+no una propuesta que el backend deba implementar. No modifica los contratos MS2/MS3.
 
----
+## Fuente y verificación
 
-## 1. Justificación Arquitectónica: ¿Por qué GraphQL para ERP y REST para Operaciones Clínicas?
+| Archivo local | Fuente publicada |
+|---|---|
+| `ms1-erp.graphql` | `docs/graphql/schema.graphqls` |
+| Referencia en `source.json` | `docs/graphql/introspection.json` completo, URL fijada a commit y SHA-256; no se duplica el JSON generado |
+| `source.json` | Revisión y SHA-256 del SDL y la introspección canónicos |
+| `examples.json` | Cuatro operaciones reales y variables ficticias |
 
-En el sistema médico-odontológico se adoptó un modelo híbrido pragmático:
+Ejecutar desde la raíz, sin servicios ni instalaciones:
 
-| Dimensión | REST (MS1 Seguridad, MS2 Expediente, MS3 Agendamiento) | GraphQL (MS1 ERP / Finanzas / Reportes) |
-|---|---|---|
-| **Naturaleza del Dominio** | Operacional, clínico, altamente transaccional y basado en recursos puntuales (citas, historias, login). | Analítico, agregador, financiero y con relaciones multidimensionales (facturas, comisiones, pagos, proveedores). |
-| **Problema que Resuelve** | Semántica estándar HTTP, caching predecible por URI, cumplimiento estricto de RFC 7807 en salud. | Elimina el **Under-fetching** (tener que hacer 5 llamadas HTTP separadas para armar el estado contable de un dentista) y el **Over-fetching** (descargar todo el detalle de una factura cuando el dashboard solo necesita el total). |
-| **Punto de Entrada** | Múltiples URIs por recurso (`/api/expediente/recetas`, `/api/agendamiento/citas`). | **Single Endpoint**: Un único punto de entrada `POST /graphql` (o `/api/erp/graphql`). |
-| **Respuesta HTTP** | Códigos de estado HTTP semánticos (`200`, `201`, `404`, `409`, `422`). | Código de estado HTTP de transporte casi siempre `200 OK`; los errores se inspeccionan en el campo `errors[]`. |
-
----
-
-## 2. Convenciones de Diseño en el Esquema GraphQL
-
-1. **Tipado Estricto (Schema First):**
-   - El archivo canónico de verdad es [contracts/graphql/ms1-erp.graphql](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/ms1-erp.graphql).
-   - Nombres de tipos en `PascalCase` (`Factura`, `LiquidacionOdontologo`).
-   - Nombres de campos y argumentos en `camelCase` (`numeroFactura`, `saldoPendiente`).
-   - Enums en mayúsculas sostenidas (`EMITIDA`, `PAGADA`).
-2. **Mutaciones con Tipos de Retorno (Payload Pattern):**
-   - Toda mutación retorna un tipo `*Payload` que contiene un flag booleano `exito: Boolean!`, un mensaje legible `mensaje: String!` y la entidad afectada nullable. Esto permite manejar fallas esperadas de negocio sin romper la ejecución de la consulta.
-3. **Idempotencia (`X-Idempotency-Key`):**
-   - Para mutaciones financieras críticas (`generarFactura`, `registrarPago`, `liquidarHonorarios`), el cliente envía un UUID v4 tanto en el campo `idempotencyKey` del input como en el encabezado HTTP estándar `X-Idempotency-Key`.
-4. **Trazabilidad (`X-Correlation-ID`):**
-   - El cliente envía `X-Correlation-ID` en las cabeceras HTTP de la petición POST a `/graphql`. Spring Boot debe capturarlo en un `WebGraphQlInterceptor` y propagarlo al `MDC` de logs y a los errores.
-
----
-
-## 3. Manejo de Errores: REST (RFC 7807) vs GraphQL Extensions
-
-A diferencia de las APIs REST donde el status HTTP refleja el error (ej: 422 o 409), en GraphQL el error se serializa en el payload JSON. Para mantener coherencia con el estándar Problem Details, se estructuran las extensiones del error:
-
-### Ejemplo de Petición con Error de Negocio:
-```graphql
-mutation {
-  liquidarHonorarios(input: {
-    idempotencyKey: "8f7e6d5c-4b3a-2109-8765-43210fedcba9"
-    odontologoId: "e28bbd98-1e43-4dc3-9c8e-5b1234567890"
-    periodo: "2026-10"
-    porcentajeComision: -5.0
-  }) {
-    exito
-    mensaje
-  }
-}
+```powershell
+python -B -m unittest discover -s scripts/tests -p test_graphql_contract.py -v
 ```
 
-### Respuesta de Error compatible con Problem Details:
-```json
-{
-  "data": null,
-  "errors": [
-    {
-      "message": "Validación de parámetros de liquidación fallida.",
-      "locations": [{ "line": 2, "column": 3 }],
-      "path": ["liquidarHonorarios"],
-      "extensions": {
-        "code": "BAD_USER_INPUT",
-        "status": 422,
-        "type": "https://api.odontoclinic.local/errors/invalid-commission",
-        "timestamp": "2026-10-21T18:45:00Z",
-        "correlationId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
-        "invalidArgs": [
-          {
-            "field": "porcentajeComision",
-            "reason": "El porcentaje de comisión debe ser un valor entre 0 y 100.",
-            "value": -5.0
-          }
-        ]
-      }
-    }
-  ]
-}
+Las comprobaciones verifican la integridad del SDL completo y de la referencia
+versionada a la introspección canónica, las referencias de todos los tipos,
+operaciones, argumentos, selección de campos e inputs de los ejemplos contra el
+SDL. El lector estructural admite la sintaxis de este release y rechaza la que
+no conoce; no pretende reemplazar un parser GraphQL general. La introspección
+completa del backend sigue siendo fuente de contraste; su revisión y SHA-256
+permiten comprobarla sin mantener otra copia generada en este repositorio. No ejecutan resolvers ni certifican JWT, permisos, persistencia,
+deduplicación o integración con Nginx. Los UUID de ejemplo son marcadores: una
+mutación real necesita entidades existentes en un entorno aislado autorizado.
+
+## Transporte e idempotencia
+
+El backend recibe `POST /graphql`. `/api/erp/graphql` es la convención pública
+prevista para el gateway; su disponibilidad debe verificarse en la configuración
+y pruebas del proxy, no inferirse de este contrato. No se convierte
+`/api/seguridad/graphql` en `/graphql` automáticamente.
+
+Para enviar un elemento de `examples.json`, usar un body JSON con `query`,
+`operationName` y `variables`, más estas cabeceras:
+
+```http
+Authorization: Bearer <access-token>
+Content-Type: application/json
+Idempotency-Key: accion-unica-por-reintento
 ```
 
----
+- **`Idempotency-Key`**, no `X-Idempotency-Key`, activa el filtro ERP en POST.
+  Es opcional para el backend; para reintentos financieros el cliente debe
+  reutilizarla para la misma acción. Admite entre 1 y 100 caracteres tras trim.
+- No existe un campo GraphQL `idempotencyKey`. No agregarlo a los inputs.
+- TTL predeterminado: 24 horas. Una clave en curso responde 409; una clave
+  reutilizada para otra solicitud responde 422. El replay devuelve
+  `Idempotency-Replayed: true`. El alcance JWT incluye issuer, subject y roles.
+- El webhook mock queda fuera del filtro HTTP y posee su propia validación.
+- Nginx reenvía las cabeceras de solicitud por defecto. La falta de una directiva
+  explícita por cabecera no demuestra pérdida de Authorization o Idempotency-Key.
+- `X-Correlation-ID` puede transportarse, pero el ERP publicado no promete
+  inyección, MDC ni propagación extremo a extremo. No es una credencial.
 
-## 4. Guía para Extender el Esquema en Spring Boot (Dennis)
+## Operaciones que sustituyen la propuesta anterior
 
-Para implementar y ampliar este esquema en **Spring Boot 3.x**:
+| Necesidad | Operación efectiva |
+|---|---|
+| Orden manual | `crearOrdenCobroManual(input: CrearOrdenCobroInput!)` |
+| Plan de cuotas | `configurarPlanDePagos(input: ConfigurarPlanPagosInput!)` |
+| Cobro efectivo | `cobrarCuotaEnEfectivo(input: CobrarEfectivoInput!)` |
+| Consulta de órdenes | `listarOrdenesCobro(estado: EstadoOrdenCobro, pacienteId: UUID)` |
 
-### 1. Dependencia en `pom.xml`:
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-graphql</artifactId>
-</dependency>
-```
+El esquema completo incluye catálogos, usuarios y configuración. Los escalares
+son `UUID`, `BigDecimal`, `Date` y `DateTime`; no sustituirlos por `ID`/`Float`.
+Las mutaciones devuelven las entidades indicadas por el SDL, no un wrapper
+inventado `exito/mensaje`. `generarFactura`, `registrarPago` y
+`liquidarHonorarios` eran propuestas obsoletas, no operaciones publicadas.
 
-### 2. Ubicación del archivo de esquema:
-Copia o vincula [ms1-erp.graphql](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/ms1-erp.graphql) dentro del directorio de recursos de Spring Boot:
-```
-src/main/resources/graphql/schema.graphqls
-```
+## Errores, identidad y límites
 
-### 3. Implementación de Controladores con Anotaciones de Spring:
-```java
-@Controller
-public class FacturaGraphQLController {
+Comprobar tanto el status HTTP como `errors[]`: un HTTP 200 no demuestra éxito de
+negocio. Un 401/403 o 502 tampoco demuestra integración. El realm compatible del
+ERP es `dental-platform`, con roles sin prefijo `ROLE_` en el token. No usar
+`X-Dev-User` ni el perfil `dev` como sustituto de JWT.
 
-    @Autowired
-    private FacturaService facturaService;
+Los reportes generan URLs relativas `/api/v1/reports/export/{reporteId}/{format}`
+(PDF/XLSX). Su descarga exige ADMIN y propietario del reporte. El webhook
+`POST /api/v1/webhooks/pagofacil` es **mock local**, con
+`X-Local-Mock-Secret`; no acredita integración productiva con PagoFácil.
 
-    @QueryMapping
-    public Factura factura(@Argument String id) {
-        return facturaService.buscarPorId(UUID.fromString(id));
-    }
-
-    @MutationMapping
-    public FacturaPayload generarFactura(@Argument GenerarFacturaInput input) {
-        // Validación de idempotencia usando input.getIdempotencyKey()
-        Factura facturaCreada = facturaService.generar(input);
-        return new FacturaPayload(true, "Factura emitida correctamente", facturaCreada);
-    }
-}
-```
-
-### 4. Resolver Relaciones bajo Demanda (`@SchemaMapping`):
-Para evitar problemas de rendimiento N+1 al cargar los ítems o pagos de una factura:
-```java
-@Controller
-public class FacturaSchemaResolver {
-
-    @SchemaMapping(typeName = "Factura", field = "items")
-    public List<DetalleFactura> getItems(Factura factura) {
-        return detalleFacturaService.buscarPorFacturaId(factura.getId());
-    }
-}
-```
-
----
-
-## 5. Exposición en el API Gateway (Nginx)
-
-Actualmente en [gateway.conf](file:///c:/2-2026/sw2/p2/platform-infrastructure/gateway/nginx/gateway.conf) se enruta:
-- `/api/seguridad/` -> `http://127.0.0.1:8081`
-
-Cuando Dennis habilite el endpoint GraphQL en Spring Boot en `/graphql` o `/api/erp/graphql`, la regla de Nginx podrá extenderse (sin modificar las rutas existentes) de la siguiente manera:
-```nginx
-# Propuesta futura para Gateway
-location /api/erp/graphql {
-    proxy_pass http://127.0.0.1:8081/graphql;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Correlation-ID $http_x_correlation_id;
-}
-```
-*(Nota: No se aplica este cambio a Nginx todavía, esperando la validación y despliegue del controlador en MS1).*
+La antigua especificación REST `../rest/ms1-seguridad.yaml` se conserva marcada
+como propuesta obsoleta no implementada. Login OAuth/OIDC corresponde a Keycloak,
+no a endpoints REST de seguridad inventados en el ERP.

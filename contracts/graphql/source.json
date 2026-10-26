@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/AI-Dentist/ms-erp",
+  "commit": "c6abae67109719113a2767e547ff0fce5553c740",
+  "artifacts": {
+    "ms1-erp.graphql": {
+      "source": "docs/graphql/schema.graphqls",
+      "sha256": "adbafe65162b252c0e36b7575884e7807b44b5096efe75f3e63576d48d210d02"
+    }
+  },
+  "references": {
+    "introspection": {
+      "source": "docs/graphql/introspection.json",
+      "sha256": "ec392a07faf6ce6ae938bd9c17a208b3ef78cd884de2376774d06f099575fd4d",
+      "url": "https://raw.githubusercontent.com/AI-Dentist/ms-erp/c6abae67109719113a2767e547ff0fce5553c740/docs/graphql/introspection.json"
+    }
+  }
+}

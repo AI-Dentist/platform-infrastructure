@@ -1,0 +1,48 @@
+[
+  {
+    "operationName": "ListarOrdenesCobro",
+    "query": "query ListarOrdenesCobro { listarOrdenesCobro { id estado montoTotalBs saldoPendienteBs } }",
+    "variables": {}
+  },
+  {
+    "operationName": "CrearOrdenCobroManual",
+    "query": "mutation CrearOrdenCobroManual($input: CrearOrdenCobroInput!) { crearOrdenCobroManual(input: $input) { id estado montoTotalBs } }",
+    "variables": {
+      "input": {
+        "pacienteId": "33333333-3333-4333-8333-333333333333",
+        "items": [
+          {
+            "servicioId": "44444444-4444-4444-8444-444444444444",
+            "cantidad": 1
+          }
+        ],
+        "descuentoBs": 0
+      }
+    }
+  },
+  {
+    "operationName": "ConfigurarPlanDePagos",
+    "query": "mutation ConfigurarPlanDePagos($input: ConfigurarPlanPagosInput!) { configurarPlanDePagos(input: $input) { id modalidadPago cuotas { id numeroCuota montoCuotaBs } } }",
+    "variables": {
+      "input": {
+        "ordenCobroId": "11111111-1111-4111-8111-111111111111",
+        "modalidadPago": "CREDITO",
+        "cantidadCuotas": 3,
+        "fechaPrimeraCuota": "2026-11-15",
+        "intervaloDias": 30
+      }
+    }
+  },
+  {
+    "operationName": "CobrarCuotaEnEfectivo",
+    "query": "mutation CobrarCuotaEnEfectivo($input: CobrarEfectivoInput!) { cobrarCuotaEnEfectivo(input: $input) { id numeroRecibo montoTotalBs } }",
+    "variables": {
+      "input": {
+        "cuotaId": "55555555-5555-4555-8555-555555555555",
+        "usuarioCajeroId": "66666666-6666-4666-8666-666666666666",
+        "ciNitCliente": "9876543",
+        "razonSocialCliente": "Ejemplo ficticio"
+      }
+    }
+  }
+]

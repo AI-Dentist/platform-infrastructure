@@ -1,13 +1,22 @@
 # Convenciones de Contratos, Integración y Arquitectura de APIs
 
 Este documento define los estándares arquitectónicos obligatorios para la comunicación síncrona entre clientes (microfrontends / frontend web), el API Gateway (Nginx) y los microservicios del sistema médico-odontológico:
-- **MS1 - Seguridad y ERP/Finanzas** (Spring Boot + PostgreSQL - Dennis): REST preliminar para seguridad y GraphQL para ERP.
+- **MS1 - ERP/Finanzas** (Spring Boot + PostgreSQL - Dennis): [GraphQL publicado](graphql/README.md). La propuesta REST de seguridad no está implementada por ms-erp; login corresponde a Keycloak.
 - **MS2 - Expediente Clínico Odontológico e IA** (NestJS + MongoDB - Henry): API REST.
 - **MS3 - Agendamiento, Citas y Stock** (Laravel + DynamoDB - Wendy): API REST.
 
 ---
 
-## 1. Convención Unificada de Identificadores
+## Estado y alcance
+
+El contrato efectivo ERP está en [graphql/README.md](graphql/README.md), con SDL completo, fuente
+publicada y hashes (incluida la referencia a la introspección completa). Las convenciones históricas siguientes de MS2/MS3 se conservan
+sin afirmar que sus implementaciones estén verificadas. No se imponen al ERP:
+este usa UUID sin exigir versión 4, `Idempotency-Key` HTTP sin input GraphQL y no
+promete trazabilidad distribuida por `X-Correlation-ID` ni errores RFC 7807 en toda
+su superficie. Las operaciones de facturas/liquidaciones anteriores eran propuestas.
+
+## 1. Convención Unificada de Identificadores (propuesta histórica MS2/MS3)
 
 En un ecosistema distribuido con bases de datos heterogéneas (PostgreSQL relacional en MS1, MongoDB documental en MS2 y DynamoDB clave-valor en MS3), los identificadores autonuméricos incrementales (`1, 2, 3`) generan colisiones entre dominios y exponen vulnerabilidades de enumeración.
 
@@ -29,15 +38,19 @@ Para garantizar trazabilidad distribuida, seguridad e idempotencia a través del
 
 | Encabezado HTTP | Tipo | Presencia | Propósito |
 |---|---|---|---|
-| `X-Correlation-ID` | UUID v4 | **Obligatorio** en todas las peticiones | Identificador único de trazabilidad extremo a extremo. Generado por el cliente frontend o inyectado por el Gateway si no viene presente. Debe propagarse en logs y eventos asíncronos. |
-| `X-Idempotency-Key` | UUID v4 | **Obligatorio** en `POST` de mutación crítica | Clave de deduplicación contra reintentos por fallas de red. Unifica el estándar en todos los microservicios. |
+| `X-Correlation-ID` | UUID v4 propuesto | Convención histórica MS2/MS3 | ERP: transporte opcional; no se acredita generación en gateway ni propagación interna. Nunca identifica al usuario autenticado. |
+| `X-Idempotency-Key` | UUID v4 propuesto | Convención histórica MS2/MS3 | No activa la deduplicación del ERP. No se cambia el contrato ajeno. |
+| `Idempotency-Key` | String de 1–100 caracteres | ERP: opcional en POST; usar para reintentos financieros | Cabecera reconocida por el filtro ERP. Sin campo `idempotencyKey` GraphQL. |
 | `Authorization` | `Bearer <JWT>` | Obligatorio en rutas autenticadas | Token de acceso JWT con firma criptográfica y claims de usuario/rol. |
 | `X-User-ID` | UUID v4 | Inyectado o propagado | Identificador único del usuario autenticado. |
 | `Content-Type` | MIME | Obligatorio en requests con body | `application/json` en REST, `application/problem+json` en errores REST, `application/json` en GraphQL. |
 
 ---
 
-## 3. Convenciones de Idempotencia (`X-Idempotency-Key`)
+## 3. Convenciones históricas de idempotencia MS2/MS3 (`X-Idempotency-Key`)
+
+**ERP:** aplicar exclusivamente [su contrato efectivo](graphql/README.md).
+Lo siguiente es una propuesta ajena conservada, no prueba de implementación.
 
 En arquitecturas distribuidas sobre redes no confiables, los clientes pueden reintentar solicitudes de creación tras timeouts, arriesgando duplicidad de datos sensibles (duplicar una reserva de turno, emitir dos veces una factura o registrar doble atención).
 
@@ -54,13 +67,16 @@ En arquitecturas distribuidas sobre redes no confiables, los clientes pueden rei
      - `POST /api/expediente/consultas`
      - `POST /api/expediente/recetas`
      - `POST /api/expediente/planes-tratamiento`
-     - `POST /api/seguridad/usuarios`
-   - En GraphQL, las mutaciones aceptan la clave tanto en el encabezado HTTP `X-Idempotency-Key` como en el campo `idempotencyKey: String!` de los Inputs.
+   - ERP no implementa `POST /api/seguridad/usuarios`. Sus mutaciones GraphQL usan
+     únicamente la cabecera `Idempotency-Key`; no existe input `idempotencyKey`.
    - El microservicio almacena la clave en cache o base de datos con un TTL de 24 horas junto con la respuesta procesada. Si llega una petición con la misma clave dentro del TTL, se devuelve la respuesta en caché sin reprocesar.
 
 ---
 
-## 4. Estándar de Errores: REST (RFC 7807) vs GraphQL
+## 4. Propuesta histórica de errores: REST (RFC 7807) vs GraphQL
+
+Los ejemplos siguientes no son contratos de errores del ERP publicado. En ERP,
+inspeccionar status HTTP y `errors[]`; no asumir los campos de estas propuestas.
 
 El sistema adopta dos enfoques diferenciados según el protocolo de transporte, manteniendo compatibilidad conceptual:
 
@@ -122,8 +138,8 @@ En GraphQL, las peticiones HTTP retornan casi siempre `200 OK` a nivel de transp
 
 | Archivo | Protocolo | Microservicio | Responsable | Estado |
 |---|---|---|---|---|
-| [contracts/rest/ms1-seguridad.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms1-seguridad.yaml) | REST (OpenAPI 3.0) | MS1 Seguridad | Dennis | Preliminar funcional |
+| [contracts/rest/ms1-seguridad.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms1-seguridad.yaml) | REST (OpenAPI 3.0) | MS1 Seguridad | Dennis | Obsoleto, no implementado por ms-erp |
 | [contracts/rest/ms2-clinico.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms2-clinico.yaml) | REST (OpenAPI 3.0) | MS2 Expediente Clínico e IA | Henry | Propuesta ampliada |
 | [contracts/rest/ms3-agendamiento.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms3-agendamiento.yaml) | REST (OpenAPI 3.0) | MS3 Agendamiento y Stock | Wendy | Propuesta ampliada |
-| [contracts/graphql/ms1-erp.graphql](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/ms1-erp.graphql) | GraphQL SDL | MS1 ERP / Finanzas | Dennis | Propuesta inicial |
+| [contracts/graphql/ms1-erp.graphql](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/ms1-erp.graphql) | GraphQL SDL | MS1 ERP / Finanzas | Dennis | Copia canónica publicada; ver graphql/source.json |
 | [contracts/graphql/README.md](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/README.md) | Documentación | Guía GraphQL vs REST | Dennis / Equipo | Guía de arquitectura |

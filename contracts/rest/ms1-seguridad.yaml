@@ -1,9 +1,13 @@
 openapi: 3.0.3
+x-status: obsolete-proposal-not-implemented-by-ms-erp
+x-backend-reference: https://github.com/AI-Dentist/ms-erp/tree/c6abae67109719113a2767e547ff0fce5553c740
 info:
-  title: MS1 - Microservicio de Seguridad y Autenticación
+  title: '[OBSOLETO / NO IMPLEMENTADO] Propuesta REST MS1 Seguridad'
   description: >-
-    Contrato REST preliminar del microservicio de seguridad, gestión de identidades locales,
-    autenticación y autorización en el sistema médico-odontológico.
+    Propuesta histórica conservada como referencia, NO implementada por ms-erp publicado.
+    Ninguna ruta de este archivo acredita una API disponible. La autenticación pertenece
+    a Keycloak y las operaciones ERP al SDL de contracts/graphql/ms1-erp.graphql.
+    El health real del backend es /actuator/health, no /api/seguridad/health.
   version: 1.1.0
   contact:
     name: Dennis (Desarrollador Responsable - Spring Boot + PostgreSQL)

@@ -1,327 +1,436 @@
-"""
-Esquema GraphQL propuesto para el módulo ERP, Finanzas y Administración Odontológica.
-Microservicio: MS1 (Spring Boot + PostgreSQL - Dennis)
-Puerto local: 8081
-Endpoint propuesto: POST /graphql (o /api/erp/graphql a través del Gateway Nginx)
-Estado: [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-"""
-
 schema {
   query: Query
   mutation: Mutation
 }
 
-# -----------------------------------------------------------------------------
-# QUERIES
-# -----------------------------------------------------------------------------
-
-type Query {
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Obtiene el detalle de una factura por su identificador UUID.
-  """
-  factura(id: ID!): Factura
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Consulta paginada de facturas emitidas con filtros por cliente/paciente, estado y rango de fechas.
-  """
-  facturas(filtro: FiltroFacturaInput, paginacion: PaginacionInput): FacturaConnection!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Calcula o consulta la liquidación de honorarios y comisiones de un odontólogo para un periodo (YYYY-MM).
-  """
-  liquidacionesOdontologo(odontologoId: ID!, periodo: String!): [LiquidacionOdontologo!]!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Reporte de balance financiero de ingresos, egresos y utilidad operativa de la clínica en un periodo.
-  """
-  balanceFinanciero(periodo: String!): BalanceFinanciero!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Catálogo de proveedores de insumos y equipamiento médico.
-  """
-  proveedores(activo: Boolean): [Proveedor!]!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Listado de órdenes de compra para abastecimiento clínico.
-  """
-  ordenesCompra(estado: EstadoOrdenCompra): [OrdenCompra!]!
+type AgenteInteraccionResponse {
+  accionCrudEjecutada: String
+  fechaEjecucion: DateTime!
+  instruccionOriginal: String!
+  interaccionId: UUID!
+  notificacionN8nEnviada: Boolean!
+  reporteGenerado: ReporteGenerativoPayload
+  respuestaNaturalAgente: String!
+  toolsMcpInvocadas: [String!]!
 }
 
-# -----------------------------------------------------------------------------
-# MUTATIONS
-# -----------------------------------------------------------------------------
+type AuditLog {
+  accion: String!
+  createdAt: DateTime!
+  detalleJson: String
+  entidadAfectada: String!
+  entidadId: UUID
+  id: UUID!
+}
+
+type Consultorio {
+  codigo: String!
+  estado: String!
+  id: UUID!
+  nombre: String!
+  ubicacion: String
+}
+
+type CuotaPago {
+  estado: EstadoCuota!
+  fechaPago: DateTime
+  fechaVencimiento: Date!
+  id: UUID!
+  montoCuotaBs: BigDecimal!
+  numeroCuota: Int!
+}
+
+type EmpresaConfig {
+  direccion: String!
+  emailContacto: String
+  id: UUID!
+  monedaSimbolo: String!
+  nit: String!
+  nombreComercial: String!
+  razonSocial: String!
+  telefonoContacto: String!
+}
+
+type Especialidad {
+  activo: Boolean!
+  codigo: String!
+  descripcion: String
+  id: UUID!
+  nombre: String!
+}
+
+type McpServerStatus {
+  activo: Boolean!
+  protocolVersion: String!
+  toolsRegistradas: [McpToolMetadata!]!
+}
+
+type McpToolMetadata {
+  categoria: String!
+  descripcion: String!
+  nombre: String!
+}
+
+type MovimientoCaja {
+  categoria: String!
+  descripcion: String!
+  fechaMovimiento: DateTime!
+  id: UUID!
+  metodoPago: MetodoPago!
+  montoBs: BigDecimal!
+  recibo: Recibo
+  tipoMovimiento: TipoMovimientoCaja!
+}
 
 type Mutation {
+  actualizarConfiguracionEmpresa(input: EmpresaConfigInput!): EmpresaConfig!
+  actualizarConsultorio(id: UUID!, input: ActualizarConsultorioInput!): Consultorio!
+  actualizarEspecialidad(id: UUID!, input: ActualizarEspecialidadInput!): Especialidad!
+  actualizarOdontologo(id: UUID!, input: ActualizarOdontologoInput!): Odontologo!
   """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Genera una factura por tratamientos odontológicos o consultas realizadas.
-  Soporta idempotencia mediante el campo `idempotencyKey` o el header `X-Idempotency-Key`.
+   Updates replace every field of the matching Crear*Input. eliminar* is logical deactivation (never a DELETE),
+   idempotent, and returns true. Consultorio has no activo column: its deactivation is estado = INACTIVO.
   """
-  generarFactura(input: GenerarFacturaInput!): FacturaPayload!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Registra el pago total o parcial de una factura existente.
-  """
-  registrarPago(input: RegistrarPagoInput!): PagoPayload!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Cierra y aprueba la liquidación de honorarios a un profesional odontólogo.
-  """
-  liquidarHonorarios(input: LiquidarHonorariosInput!): LiquidacionPayload!
-
-  """
-  [PROPUESTA - PENDIENTE DE VALIDACIÓN POR DENNIS]
-  Crea una orden de compra para abastecer stock de insumos clínicos.
-  """
-  crearOrdenCompra(input: CrearOrdenCompraInput!): OrdenCompraPayload!
+  actualizarPaciente(id: UUID!, input: ActualizarPacienteInput!): Paciente!
+  actualizarServicioOdontologico(id: UUID!, input: ActualizarServicioInput!): ServicioOdontologico!
+  actualizarUsuario(id: UUID!, input: ActualizarUsuarioInput!): Usuario!
+  cobrarCuotaEnEfectivo(input: CobrarEfectivoInput!): Recibo!
+  configurarPlanDePagos(input: ConfigurarPlanPagosInput!): OrdenCobro!
+  crearConsultorio(input: CrearConsultorioInput!): Consultorio!
+  crearEspecialidad(codigo: String!, descripcion: String, nombre: String!): Especialidad!
+  crearOdontologo(input: CrearOdontologoInput!): Odontologo!
+  crearOrdenCobroManual(input: CrearOrdenCobroInput!): OrdenCobro!
+  crearPaciente(input: CrearPacienteInput!): Paciente!
+  crearServicioOdontologico(input: CrearServicioInput!): ServicioOdontologico!
+  crearUsuario(input: CrearUsuarioInput!): Usuario!
+  ejecutarAgenteErp(instruccion: String!, modoAutonomoMonitoreo: Boolean = false): AgenteInteraccionResponse!
+  eliminarConsultorio(id: UUID!): Boolean!
+  eliminarEspecialidad(id: UUID!): Boolean!
+  eliminarOdontologo(id: UUID!): Boolean!
+  eliminarPaciente(id: UUID!): Boolean!
+  eliminarServicioOdontologico(id: UUID!): Boolean!
+  generarQrPagoFacil(ciNitCliente: String!, cuotaId: UUID!, razonSocialCliente: String!): TransaccionQr!
+  registrarEgresoCaja(input: RegistrarEgresoInput!): MovimientoCaja!
+  simularConfirmacionQrDev(pagofacilTransactionId: String!): Recibo!
 }
 
-# -----------------------------------------------------------------------------
-# ENUMS
-# -----------------------------------------------------------------------------
+type Odontologo {
+  activo: Boolean!
+  apellidos: String!
+  ci: String!
+  email: String
+  especialidades: [Especialidad!]!
+  id: UUID!
+  matriculaProfesional: String!
+  nombres: String!
+  porcentajeComision: BigDecimal!
+  telefono: String!
+}
 
-enum EstadoFactura {
-  BORRADOR
-  EMITIDA
-  PAGADA
-  PAGADA_PARCIAL
+type OrdenCobro {
+  cantidadCuotas: Int!
+  consultaExternaId: UUID
+  createdAt: DateTime!
+  cuotas: [CuotaPago!]!
+  descuentoBs: BigDecimal!
+  estado: EstadoOrdenCobro!
+  id: UUID!
+  items: [OrdenCobroItem!]!
+  modalidadPago: ModalidadPago!
+  montoSubtotalBs: BigDecimal!
+  montoTotalBs: BigDecimal!
+  odontologo: Odontologo
+  paciente: Paciente!
+  saldoPendienteBs: BigDecimal!
+}
+
+type OrdenCobroItem {
+  cantidad: Int!
+  id: UUID!
+  piezaDental: String
+  precioUnitarioBs: BigDecimal!
+  servicio: ServicioOdontologico!
+  subtotalBs: BigDecimal!
+}
+
+type Paciente {
+  activo: Boolean!
+  apellidos: String!
+  ciNit: String!
+  direccion: String
+  email: String
+  fechaNacimiento: Date
+  genero: String
+  id: UUID!
+  nombres: String!
+  telefonoWhatsapp: String!
+}
+
+type Query {
+  listarAuditLogs(limite: Int = 50): [AuditLog!]!
+  listarConsultorios: [Consultorio!]!
+  listarCuotasPendientesPorPaciente(pacienteId: UUID!): [CuotaPago!]!
+  listarEspecialidades: [Especialidad!]!
+  listarHistorialAgente(limite: Int = 20): [AgenteInteraccionResponse!]!
+  listarOdontologos(soloActivos: Boolean = true): [Odontologo!]!
+  listarOrdenesCobro(estado: EstadoOrdenCobro, pacienteId: UUID): [OrdenCobro!]!
+  listarPacientes(busqueda: String): [Paciente!]!
+  listarRoles: [Rol!]!
+  listarServiciosOdontologicos(especialidadId: UUID): [ServicioOdontologico!]!
+  listarUsuarios: [Usuario!]!
+  obtenerConfiguracionEmpresa: EmpresaConfig!
+  obtenerEstadoServidorMcp: McpServerStatus!
+  obtenerFlujoCaja(fechaFin: DateTime!, fechaInicio: DateTime!): ResumenFlujoCaja!
+  obtenerOrdenCobroDetalle(id: UUID!): OrdenCobro
+  obtenerPacientePorId(id: UUID!): Paciente
+}
+
+type Recibo {
+  ciNitCliente: String!
+  concepto: String!
+  enviadoWhatsapp: Boolean!
+  fechaEmision: DateTime!
+  id: UUID!
+  montoTotalBs: BigDecimal!
+  numeroRecibo: String!
+  pdfUrlS3: String
+  razonSocialCliente: String!
+}
+
+type ReporteGenerativoPayload {
+  columnas: [String!]!
+  consultaSqlEjecutada: String!
+  filasJson: String!
+  reporteId: UUID!
+  tipoGraficoSugerido: String!
+  urlDescargaExcel: String!
+  urlDescargaPdf: String!
+}
+
+type ResumenFlujoCaja {
+  movimientos: [MovimientoCaja!]!
+  saldoNetoBs: BigDecimal!
+  totalEgresosBs: BigDecimal!
+  totalIngresosBs: BigDecimal!
+}
+
+type Rol {
+  codigo: String!
+  id: UUID!
+  nombre: String!
+  permisos: [String!]!
+}
+
+type ServicioOdontologico {
+  activo: Boolean!
+  codigo: String!
+  descripcion: String
+  especialidad: Especialidad
+  id: UUID!
+  nombre: String!
+  precioBaseBs: BigDecimal!
+}
+
+type TransaccionQr {
+  cuotaId: UUID!
+  estado: String!
+  fechaExpiracion: DateTime
+  id: UUID!
+  montoBs: BigDecimal!
+  pagofacilTransactionId: String!
+  qrImagenBase64: String!
+}
+
+type Usuario {
+  activo: Boolean!
+  email: String!
+  id: UUID!
+  nombreCompleto: String!
+  rol: Rol!
+  username: String!
+}
+
+enum EstadoCuota {
   ANULADA
+  PAGADA
+  PENDIENTE
+  VENCIDA
+}
+
+enum EstadoOrdenCobro {
+  ANULADO
+  PAGADO
+  PARCIAL
+  PENDIENTE
 }
 
 enum MetodoPago {
   EFECTIVO
-  TARJETA_DEBITO
-  TARJETA_CREDITO
-  TRANSFERENCIA_BANCARIA
-  SEGURO_MEDICO
+  QR_PAGOFACIL
+  TRANSFERENCIA
 }
 
-enum EstadoLiquidacion {
-  PENDIENTE
-  APROBADA
-  PAGADA
-  RECHAZADA
+enum ModalidadPago {
+  CONTADO
+  CREDITO
 }
 
-enum EstadoOrdenCompra {
-  SOLICITADA
-  APROBADA
-  RECIBIDA
-  CANCELADA
+enum TipoMovimientoCaja {
+  EGRESO
+  INGRESO
 }
 
-# -----------------------------------------------------------------------------
-# TIPOS DE DOMINIO: FACTURACIÓN Y FINANZAS
-# -----------------------------------------------------------------------------
+"Decimal amount, serialized as a JSON number"
+scalar BigDecimal
 
-type Factura {
-  id: ID!
-  numeroFactura: String!
-  pacienteId: ID!
-  citaId: ID
-  fechaEmision: String!
-  estado: EstadoFactura!
-  subtotal: Float!
-  impuesto: Float!
-  descuento: Float!
-  total: Float!
-  saldoPendiente: Float!
-  items: [DetalleFactura!]!
-  pagos: [PagoFactura!]!
+"ISO-8601 date (yyyy-MM-dd)"
+scalar Date
+
+"ISO-8601 date-time with offset"
+scalar DateTime
+
+"RFC 4122 UUID"
+scalar UUID
+
+"estado, when present, must be DISPONIBLE, MANTENIMIENTO or INACTIVO; omitted keeps the current one"
+input ActualizarConsultorioInput {
+  codigo: String!
+  estado: String
+  nombre: String!
+  ubicacion: String
 }
 
-type DetalleFactura {
-  id: ID!
-  descripcion: String!
-  codigoProcedimiento: String
-  cantidad: Int!
-  precioUnitario: Float!
-  subtotal: Float!
+input ActualizarEspecialidadInput {
+  codigo: String!
+  descripcion: String
+  nombre: String!
 }
 
-type PagoFactura {
-  id: ID!
-  fechaPago: String!
-  monto: Float!
-  metodo: MetodoPago!
-  referenciaTransaccion: String
+input ActualizarOdontologoInput {
+  apellidos: String!
+  ci: String!
+  email: String
+  especialidadesIds: [UUID!]!
+  matriculaProfesional: String!
+  nombres: String!
+  porcentajeComision: BigDecimal!
+  telefono: String!
 }
 
-type LiquidacionOdontologo {
-  id: ID!
-  odontologoId: ID!
-  periodo: String!
-  totalAtenciones: Int!
-  montoFacturadoBruto: Float!
-  porcentajeComision: Float!
-  montoComisionPagar: Float!
-  retenciones: Float!
-  montoNetoPagar: Float!
-  estado: EstadoLiquidacion!
-  fechaAprobacion: String
+input ActualizarPacienteInput {
+  apellidos: String!
+  ciNit: String!
+  direccion: String
+  email: String
+  fechaNacimiento: Date
+  genero: String
+  nombres: String!
+  telefonoWhatsapp: String!
 }
 
-type BalanceFinanciero {
-  periodo: String!
-  ingresosTotales: Float!
-  egresosTotales: Float!
-  utilidadOperativa: Float!
-  ingresosPorMetodo: [IngresoMetodoDTO!]!
-  gastosPorCategoria: [GastoCategoriaDTO!]!
+input ActualizarServicioInput {
+  codigo: String!
+  descripcion: String
+  especialidadId: UUID
+  nombre: String!
+  precioBaseBs: BigDecimal!
 }
 
-type IngresoMetodoDTO {
-  metodo: MetodoPago!
-  monto: Float!
-}
-
-type GastoCategoriaDTO {
-  categoria: String!
-  monto: Float!
-}
-
-# -----------------------------------------------------------------------------
-# TIPOS DE DOMINIO: COMPRAS Y PROVEEDORES
-# -----------------------------------------------------------------------------
-
-type Proveedor {
-  id: ID!
-  numeroRUT: String!
-  razonSocial: String!
-  nombreContacto: String
-  telefono: String
-  email: String!
+"nombreCompleto and email, when omitted, keep their current value; username and password never change"
+input ActualizarUsuarioInput {
   activo: Boolean!
+  email: String
+  nombreCompleto: String
+  rolCodigo: String!
 }
 
-type OrdenCompra {
-  id: ID!
-  codigoOrden: String!
-  proveedor: Proveedor!
-  fechaEmision: String!
-  fechaEntregaEstimada: String
-  estado: EstadoOrdenCompra!
-  totalEstimado: Float!
-  items: [DetalleOrdenCompra!]!
+input CobrarEfectivoInput {
+  ciNitCliente: String!
+  cuotaId: UUID!
+  razonSocialCliente: String!
+  usuarioCajeroId: UUID!
 }
 
-type DetalleOrdenCompra {
-  insumoId: ID!
-  nombreInsumo: String!
-  cantidadSolicitada: Int!
-  precioUnitarioEstimado: Float!
-  subtotal: Float!
+input ConfigurarPlanPagosInput {
+  cantidadCuotas: Int!
+  descuentoBs: BigDecimal = 0
+  fechaPrimeraCuota: Date!
+  intervaloDias: Int = 30
+  modalidadPago: ModalidadPago!
+  ordenCobroId: UUID!
 }
 
-# -----------------------------------------------------------------------------
-# PAGINACIÓN
-# -----------------------------------------------------------------------------
-
-input PaginacionInput {
-  pagina: Int = 1
-  limite: Int = 10
+input CrearConsultorioInput {
+  codigo: String!
+  nombre: String!
+  ubicacion: String
 }
 
-type PageInfo {
-  paginaActual: Int!
-  totalPaginas: Int!
-  totalRegistros: Int!
-  tienePaginaSiguiente: Boolean!
+input CrearOdontologoInput {
+  apellidos: String!
+  ci: String!
+  email: String
+  especialidadesIds: [UUID!]!
+  matriculaProfesional: String!
+  nombres: String!
+  porcentajeComision: BigDecimal!
+  telefono: String!
 }
 
-type FacturaConnection {
-  items: [Factura!]!
-  pageInfo: PageInfo!
+input CrearOrdenCobroInput {
+  descuentoBs: BigDecimal = 0
+  items: [OrdenCobroItemInput!]!
+  observaciones: String
+  odontologoId: UUID
+  pacienteId: UUID!
 }
 
-# -----------------------------------------------------------------------------
-# INPUTS Y PAYLOADS (MUTATIONS)
-# -----------------------------------------------------------------------------
-
-input FiltroFacturaInput {
-  pacienteId: ID
-  estado: EstadoFactura
-  fechaDesde: String
-  fechaHasta: String
+input CrearPacienteInput {
+  apellidos: String!
+  ciNit: String!
+  direccion: String
+  email: String
+  fechaNacimiento: Date
+  genero: String
+  nombres: String!
+  telefonoWhatsapp: String!
 }
 
-input DetalleFacturaInput {
-  descripcion: String!
-  codigoProcedimiento: String
+input CrearServicioInput {
+  codigo: String!
+  descripcion: String
+  especialidadId: UUID
+  nombre: String!
+  precioBaseBs: BigDecimal!
+}
+
+input CrearUsuarioInput {
+  email: String!
+  nombreCompleto: String!
+  password: String!
+  rolCodigo: String!
+  username: String!
+}
+
+input EmpresaConfigInput {
+  direccion: String!
+  emailContacto: String
+  nit: String!
+  nombreComercial: String!
+  razonSocial: String!
+  telefonoContacto: String!
+}
+
+input OrdenCobroItemInput {
   cantidad: Int!
-  precioUnitario: Float!
+  piezaDental: String
+  servicioId: UUID!
 }
 
-input GenerarFacturaInput {
-  """Clave UUID v4 de idempotencia obligatoria para evitar facturación duplicada."""
-  idempotencyKey: String!
-  pacienteId: ID!
-  citaId: ID
-  items: [DetalleFacturaInput!]!
-  descuento: Float = 0.0
-}
-
-type FacturaPayload {
-  exito: Boolean!
-  mensaje: String!
-  factura: Factura
-}
-
-input RegistrarPagoInput {
-  """Clave UUID v4 de idempotencia."""
-  idempotencyKey: String!
-  facturaId: ID!
-  monto: Float!
-  metodo: MetodoPago!
-  referenciaTransaccion: String
-}
-
-type PagoPayload {
-  exito: Boolean!
-  mensaje: String!
-  factura: Factura
-  pago: PagoFactura
-}
-
-input LiquidarHonorariosInput {
-  """Clave UUID v4 de idempotencia."""
-  idempotencyKey: String!
-  odontologoId: ID!
-  periodo: String!
-  porcentajeComision: Float!
-}
-
-type LiquidacionPayload {
-  exito: Boolean!
-  mensaje: String!
-  liquidacion: LiquidacionOdontologo
-}
-
-input DetalleOrdenCompraInput {
-  insumoId: ID!
-  nombreInsumo: String!
-  cantidadSolicitada: Int!
-  precioUnitarioEstimado: Float!
-}
-
-input CrearOrdenCompraInput {
-  """Clave UUID v4 de idempotencia."""
-  idempotencyKey: String!
-  proveedorId: ID!
-  fechaEntregaEstimada: String
-  items: [DetalleOrdenCompraInput!]!
-}
-
-type OrdenCompraPayload {
-  exito: Boolean!
-  mensaje: String!
-  ordenCompra: OrdenCompra
+input RegistrarEgresoInput {
+  categoria: String!
+  descripcion: String!
+  metodoPago: MetodoPago!
+  montoBs: BigDecimal!
+  usuarioCajeroId: UUID!
 }
