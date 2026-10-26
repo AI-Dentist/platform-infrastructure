@@ -1,174 +1,138 @@
-# Guía de Instalación y Ejecución de Nginx (API Gateway Local)
+# Gateway HTTP para ERP y servicios existentes
 
-Esta guía describe cómo instalar, configurar y operar **Nginx en Windows** como API Gateway unificado para el sistema médico-odontológico distribuido.
+`gateway.conf` agrega las superficies reales del ERP sin retirar MS2/MS3.
+La autenticación y autorización permanecen en el backend: Nginx no valida JWT
+ni permite usar `X-Dev-User` para entrar al ERP.
 
----
+## Verificación rápida (aislada)
 
-## 1. Topología del Gateway y Microservicios
+Requiere Python 3 (biblioteca estándar), Docker disponible y la imagen **ya local**
+`nginx:1.28-alpine`. No instala herramientas, no descarga imágenes y no recarga
+Nginx compartido:
 
-El Gateway centraliza las solicitudes del frontend en el puerto estándar `80` y las enruta por prefijo a cada microservicio local:
-
-| Microservicio | Responsable | Tecnología | Puerto Local | Prefijo en Gateway (Puerto 80) | Estado Actual |
-|---|---|---|---|---|---|
-| **MS1 - Seguridad** | Dennis | Spring Boot | `8081` | `http://localhost/api/seguridad/` | En desarrollo |
-| **MS2 - Expediente Clínico** | Henry | NestJS | `3001` | `http://localhost/api/expediente/` | Funcional (MongoDB) |
-| **MS3 - Agendamiento** | Wendy | Laravel | `8001` | `http://localhost/api/agendamiento/` | En desarrollo |
-| **Rutas no mapeadas** | N/A | Nginx Fallback | - | `http://localhost/*` | Retorna `404 Not Found` |
-
----
-
-## 2. Requisitos Previos
-
-- Sistema operativo **Windows 10 / 11**.
-- PowerShell 5.1 o PowerShell 7+.
-- Permisos de Administrador (para liberar el puerto 80 si otro servicio lo ocupa).
-- Acceso al repositorio `platform-infrastructure` en la ruta local (ejemplo: `C:/2-2026/sw2/p2/platform-infrastructure`).
-
----
-
-## 3. Instalación de Nginx en Windows
-
-1. **Descarga**:
-   - Descarga la versión estable de Nginx para Windows desde [nginx.org/en/download.html](https://nginx.org/en/download.html) (ejemplo: `nginx/Windows-1.24.x` o superior).
-2. **Extracción en ruta estándar**:
-   - Descomprime el contenido del archivo zip directamente en la raíz de tu disco C:
-     ```
-     C:\nginx\
-     ├── conf\
-     ├── contrib\
-     ├── docs\
-     ├── html\
-     ├── logs\
-     ├── temp\
-     └── nginx.exe
-     ```
-   > **Importante:** La ruta recomendada y estandarizada para todo el equipo es `C:\nginx`.
-
----
-
-## 4. Vinculación del Gateway al Repositorio
-
-Para que no tengas que copiar archivos cada vez que haya cambios, enlazamos el archivo `gateway.conf` del repositorio directamente dentro de la configuración de Nginx.
-
-1. Abre el archivo de configuración principal de Nginx:
-   ```
-   C:\nginx\conf\nginx.conf
-   ```
-2. Desactiva o comenta el bloque `server { ... }` que viene por defecto dentro de `http { ... }`.
-3. Al final del bloque `http { ... }` (justo antes de la llave de cierre `}`), añade la directiva `include` apuntando a tu ruta del repositorio usando **barras inclinadas directas (`/`)**:
-
-```nginx
-http {
-    include       mime.types;
-    default_type  application/octet-stream;
-    sendfile        on;
-    keepalive_timeout  65;
-
-    # Inclusión del Gateway del proyecto médico-odontológico
-    include C:/2-2026/sw2/p2/platform-infrastructure/gateway/nginx/gateway.conf;
-}
-```
-
-> **Nota crítica de sintaxis en Windows:** En Nginx se deben usar diagonales normales `/` (ej. `C:/ruta/archivo.conf`) y no diagonales invertidas `\`.
-
----
-
-## 5. Ciclo de Vida y Comandos Operativos
-
-Abre una consola de **PowerShell** en `C:\nginx`:
-
-### A. Validar la sintaxis de la configuración (Obligatorio antes de iniciar o recargar)
 ```powershell
-cd C:\nginx
-.\nginx.exe -t
-```
-*Salida esperada:*
-```text
-nginx: the configuration file C:\nginx/conf/nginx.conf syntax is ok
-nginx: configuration file C:\nginx/conf/nginx.conf test is successful
-```
-
-### B. Iniciar Nginx
-```powershell
-cd C:\nginx
-start nginx
-```
-*Nota: `start nginx` inicia el proceso en segundo plano y te devuelve el control de la consola de inmediato.*
-
-### C. Recargar cambios en caliente (Hot-Reload)
-Si se actualiza `gateway.conf` o la configuración general, no es necesario reiniciar Nginx:
-```powershell
-cd C:\nginx
-.\nginx.exe -s reload
-```
-
-### D. Detener Nginx
-```powershell
-# Detención rápida
-cd C:\nginx
-.\nginx.exe -s stop
-
-# Detención ordenada (graceful shutdown)
-cd C:\nginx
-.\nginx.exe -s quit
-```
-
-### E. Comprobar si los procesos están activos
-```powershell
-Get-Process -Name nginx -ErrorAction SilentlyContinue
-```
-
-### F. Forzar terminación de procesos zombi (si no responde)
-```powershell
-Stop-Process -Name nginx -Force -ErrorAction SilentlyContinue
-```
-
----
-
-## 6. Scripts de Verificación Automatizada
-
-Dentro de la carpeta `scripts/` de `platform-infrastructure` tienes a disposición dos scripts listos para usar:
-
-### Diagnóstico de Puertos Locales
-Verifica si el Gateway (80) y los microservicios (8081, 3001, 8001) están levantados y qué PID los tiene:
-```powershell
-cd C:\2-2026\sw2\p2\platform-infrastructure
-.\scripts\check-ports.ps1
-```
-
-### Test de Conectividad End-to-End del Gateway
-Ejecuta solicitudes a través de `http://localhost/...`:
-```powershell
-cd C:\2-2026\sw2\p2\platform-infrastructure
+python scripts/test_gateway.py --help
+python scripts/test_gateway.py
+# Alternativa PowerShell; conserva el código de salida del runner:
 .\scripts\test-gateway.ps1
 ```
 
-*Interpretación de resultados:*
-- **200 OK**: El Gateway y el microservicio backend están funcionando y comunicándose.
-- **502 Bad Gateway**: Nginx está funcionando bien en el puerto 80, pero el microservicio backend destino aún no ha sido iniciado en su puerto.
-- **Error de red / Conexión rechazada al puerto 80**: Nginx no se ha iniciado. Ejecutar `start nginx` en `C:\nginx`.
-- **404 Not Found en ruta no mapeada**: Regla de seguridad del Gateway funcionando correctamente.
+Un código `0` demuestra transporte HTTP contra upstreams simulados y sintaxis
+real mediante `nginx -t`; cualquier fallo termina con código `1`. El caso negativo
+comprueba un `502` con upstream caído: **no es éxito de integración**. No se
+inventan endpoints health en los servicios existentes.
 
----
+## Rutas públicas → upstream
 
-## 7. Solución de Problemas Frecuentes en Windows
+| Ruta pública | Servicio / URI interna | Comportamiento |
+|---|---|---|
+| `/api/erp/graphql` | ERP:8081 `/graphql` | POST GraphQL; query intacta |
+| `/mcp` | ERP:8081 `/mcp` | Streamable HTTP: POST/GET/DELETE, no WebSocket |
+| `/api/v1/webhooks/pagofacil` | ERP:8081 misma URI | POST; mock local, no proveedor productivo certificado |
+| `/api/v1/reports/export/{reporteId}/{format}` | ERP:8081 misma URI | GET PDF/XLSX; preserva URLs relativas emitidas por ERP |
+| `/api/seguridad/…` | ERP:8081 misma URI completa | Alias histórico conservado; no inventa API REST ERP |
+| `/api/expediente/…` | MS2:3001 misma URI completa | Sin quitar prefijo |
+| `/api/agendamiento/…` | MS3:8001 misma URI completa | Sin quitar prefijo |
+| `/api/erp/health`, `/actuator`, `/actuator/*` | Ninguno | 404: health público deshabilitado |
+| Otras rutas | Ninguno | 404 |
 
-### 1. "El puerto 80 ya está en uso" (System PID 4 / IIS / W3SVC)
-En Windows, el servicio IIS o el controlador `HTTP.sys` pueden adueñarse del puerto 80.
-- Para verificar qué proceso usa el puerto 80:
-  ```powershell
-  Get-NetTCPConnection -LocalPort 80 -State Listen
-  ```
-- Si el PID es `4` (System), generalmente es el servicio de publicación web (IIS). Para detenerlo y deshabilitarlo temporalmente para desarrollo:
-  ```powershell
-  Stop-Service W3SVC -ErrorAction SilentlyContinue
-  Set-Service W3SVC -StartupType Disabled -ErrorAction SilentlyContinue
-  ```
-- Si utilizas SQL Server Reporting Services o Web Deployment Service, revisa si tienen tomado el puerto 80.
+El health operativo real es `/actuator/health`, accesible desde la red operativa
+privada directamente al ERP. No publicar Actuator completo ni usar
+`/api/seguridad/health` como prueba de salud ERP. No se habilita un alias público
+health opcional: requiere una política de acceso explícita antes de agregarlo.
 
-### 2. Cambios en `gateway.conf` no surten efecto
-- Asegúrate de ejecutar `.\nginx.exe -s reload` después de guardar cambios.
-- Verifica en el Administrador de Tareas que no existan múltiples instancias residuales de `nginx.exe`. Si las hay, ejecuta `Stop-Process -Name nginx -Force` y luego `start nginx`.
+## Ejecutar según la topología
 
-### 3. Error `CreateFile() ... failed` en `error.log`
-- Revisa `C:\nginx\logs\error.log`. Suele ocurrir si se usaron barras invertidas `\` en el `include` de `nginx.conf`. Cámbialas por `/`.
+La fuente de verdad es el backend publicado `main`
+`c6abae67109719113a2767e547ff0fce5553c740`, `application.yml` y
+`application-local.yml`:
+
+| Modo | Configuración |
+|---|---|
+| Nginx y ERP en el mismo host | `erp_backend` apunta a `127.0.0.1:8081`; establecer **`ERP_PORT=8081`**, también con perfil `local` |
+| ERP sin perfil local | El puerto predeterminado ya es 8081 |
+| Perfil `local` sin override | El backend usa **8080**: no coincide con este gateway hasta establecer `ERP_PORT=8081` o ajustar upstream |
+| Nginx y servicios en contenedores | Cambiar los tres destinos a nombres DNS reales de servicios en la misma red Docker y sus puertos internos; `127.0.0.1` es el propio contenedor Nginx |
+| Nginx contenedor, ERP en host | Usar `host.docker.internal:8081`; en Linux puede requerir el mapeo `host-gateway` |
+
+El runner usa servidores HTTP falsos en puertos efímeros del host y reemplaza
+los destinos solamente en una copia temporal `.gateway-test-*` dentro del repositorio
+(excluida de Git y eliminada al terminar). Publica Nginx en un puerto aleatorio
+**de loopback**, usa `--pull=never` y elimina sus contenedores y temporales incluso
+si falla. Los falsos upstreams escuchan en interfaces del host para permitir
+acceso desde Docker; ejecutarlo solamente en una estación de pruebas confiable.
+
+### Incluir la configuración
+
+`gateway.conf` contiene `upstream`, `map` y `server`: incluirlo **dentro de
+`http {}`**, nunca dentro de otro `server`. Deshabilitar el servidor de ejemplo
+que compita por el mismo puerto. Ejemplo Windows (ajustar ruta real):
+
+```nginx
+http {
+    include mime.types;
+    default_type application/octet-stream;
+    include C:/proyectos/platform-infrastructure/gateway/nginx/gateway.conf;
+}
+```
+
+Validar en la instancia operativa con `nginx -t` antes de cualquier cambio.
+Iniciar/recargar servicios compartidos requiere autorización separada; el runner
+no lo hace. Nginx no interpola automáticamente variables de entorno en este
+archivo: ajustar upstreams y allowlist en la configuración de cada entorno.
+
+## Frontera CORS y autenticación
+
+- Allowlist inicial explícita: `http://localhost:4201`. Cambiar el `map` para
+  orígenes reales aprobados (esquema, host y puerto exactos); no usar `*`.
+- OPTIONS válido se responde localmente con 204. Origen, método o cabeceras no
+  permitidos producen 403 sin autorización CORS; no alcanzan el backend.
+- Métodos permitidos: GET, POST, DELETE, OPTIONS. Cabeceras permitidas:
+  `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`, `Mcp-Session-Id`,
+  `MCP-Protocol-Version`, `Last-Event-ID` (reanudación SSE) y `X-Correlation-ID`
+  (solo transporte). Se exponen `Mcp-Session-Id`, `Content-Disposition` e
+  `Idempotency-Replayed`; esto no demuestra replay ni reanudación en el backend.
+- El gateway suprime los `Access-Control-*` habituales del upstream para evitar
+  duplicados y agrega `Vary: Origin`. No habilita credenciales CORS.
+  `ERP_CORS_ALLOWED_ORIGINS` es la variable real del backend; para tráfico directo
+  requiere su propia política explícita. Nginx es la autoridad CORS en su frontera.
+- CORS no autentica ni bloquea clientes no navegador. Un origen no permitido no
+  recibe cabeceras CORS; las solicitudes normales siguen llegando al ERP, que
+  debe validar JWT y roles. Respuestas 401/403/500 no se convierten en éxito.
+- `X-Dev-User` se elimina de **todas** las rutas que alcanzan ERP, incluido
+  `/api/seguridad/`. No usar `dev-mode` ni otro bypass para integrar servicios.
+  Restringir también acceso directo al puerto ERP fuera de la red autorizada.
+- Nginx reenvía por defecto Authorization, Idempotency-Key y cabeceras MCP;
+  no necesitan una directiva por cabecera. `X-Correlation-Id` se transporta si
+  el cliente lo envía: no se genera, valida, devuelve ni atribuye soporte al ERP.
+
+## Streaming, descargas y límites de lo demostrado
+
+`proxy_buffering off`, caché deshabilitada y HTTP/1.1 permiten eventos SSE sin
+esperar al final. `proxy_read_timeout 300s` mide inactividad **entre lecturas**,
+no un deadline total. Un stream puede durar más si sigue enviando datos; ajustar
+el intervalo a la política operativa, sin atribuir fallos no reproducidos al
+valor predeterminado de Nginx. No se configura Upgrade/WebSocket.
+
+Las pruebas verifican método, URI, query, body y cabeceras en cada ruta; preservan
+las tres rutas históricas; comprueban bytes y cabeceras PDF/XLSX, preflight,
+supresión CORS, eliminación de bypass dev, errores, 404 y 502. Un primer evento
+SSE debe llegar antes de que termine el upstream. La política de timeout se
+explica por su semántica, no se espera 300 segundos en la prueba.
+
+Para RED con configuración previa externa, sin leer historial Git:
+
+```powershell
+python scripts/test_gateway.py --baseline-config C:/temporal/gateway-anterior.conf
+python scripts/test_gateway.py --baseline-config C:/temporal/gateway-anterior.conf --legacy-only
+python scripts/test_gateway.py --legacy-only
+```
+
+El diferencial legacy verifica el mismo contrato exacto antes/después; solamente
+la retirada intencional de `X-Dev-User` en MS1 difiere. No reduce las pruebas para
+que una configuración antigua obtenga GREEN completo.
+
+Pendiente de E2E autorizado: JWT firmado/issuer/roles con Keycloak, GraphQL real,
+negociación y sesión MCP reales, deduplicación persistida y webhook mock ERP.
+Estos tests **no certifican** esas capacidades ni PagoFácil productivo; tampoco
+validan contratos de eventos o conectividad a datos reales.

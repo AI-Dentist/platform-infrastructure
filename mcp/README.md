@@ -3,6 +3,18 @@
 > **ESTADO DEL COMPONENTE: PLANIFICADO (NO INSTALAR EN ESTA FASE)**  
 > Este documento describe las responsabilidades, protocolos y especificación técnica del servidor MCP diseñado para brindar contexto clínico al módulo de inteligencia artificial de MS2 (`ms2-clinico-ia`). No se debe proceder con la instalación o inicialización del servidor hasta recibir la autorización correspondiente.
 
+## MCP ERP: superficie distinta, ya publicada por ms-erp
+
+El servidor clínico propuesto abajo **no sustituye** al MCP del ERP. El backend
+ERP publicado `c6abae67109719113a2767e547ff0fce5553c740` implementa `/mcp` con
+**Streamable HTTP**, autenticación Bearer y autorización de herramientas por rol.
+El gateway conserva `/mcp` sin reescritura hacia ERP:8081; no usa WebSocket ni el
+puerto clínico 3100. Ver [rutas, CORS y streaming](../gateway/nginx/README.md).
+
+Las pruebas del gateway verifican transporte y llegada temprana de eventos SSE
+contra mocks, no una negociación/sesión MCP real ni ejecución de herramientas
+contra el ERP. No se invocaron proveedores de IA ni datos clínicos reales.
+
 ---
 
 ## 1. Responsabilidades de MCP en el Dominio Odontológico

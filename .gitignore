@@ -9,3 +9,8 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# Isolated gateway scratch and Python bytecode are not delivery artifacts.
+.gateway-test-*/
+__pycache__/
+*.py[cod]
