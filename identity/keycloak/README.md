@@ -74,6 +74,11 @@ desde el ERP. El navegador también debe llegar al issuer público.
   ni al host. Usar un nombre público estable con resolución/ruteo adecuados
   desde navegador y backend (por ejemplo DNS dividido o proxy autorizado).
   Configurar el hostname público anunciado por Keycloak de forma coherente.
+  Para clientes automatizados estrictos, probar PKCE sobre HTTPS: las cookies
+  `Secure` pueden no viajar por HTTP aunque el navegador trate localhost como
+  origen confiable. En pruebas aisladas usar un certificado local confiado por
+  cliente y Java; no desactivar autenticación ni validación TLS para evitar un
+  `cookie_not_found`.
   No sustituir solo el issuer backend por `http://keycloak:8080/realms/dental-platform`
   si los tokens dicen `http://localhost:8180/realms/dental-platform`.
 - No se agrega una variable ficticia para separar JWKS interno del issuer.

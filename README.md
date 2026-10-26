@@ -14,7 +14,8 @@ integración extremo a extremo con servicios desplegados**.
 
 El ERP publicado es la fuente de verdad: no se le agregan endpoints REST para
 satisfacer propuestas antiguas. Para actualizar contratos, volver a comprobar el
-`main` publicado y sincronizar SDL/introspección juntos.
+`main` publicado y sincronizar el SDL y la referencia versionada/hash de la
+introspección juntos. No se mantiene otra copia del JSON generado en esta entrega.
 
 ## Mapa de ejecución
 
@@ -75,7 +76,7 @@ se elimina al pasar por Nginx. Restringir el puerto directo del ERP por red.
 
 | Superficie | Fuente / estado |
 |---|---|
-| [GraphQL ERP](contracts/graphql/README.md) | SDL e introspección canónicos, revisión y SHA-256 en `source.json`; cuatro ejemplos reales |
+| [GraphQL ERP](contracts/graphql/README.md) | SDL canónico completo, referencia de introspección completa fijada por commit/URL/SHA-256; cuatro ejemplos reales |
 | [REST MS1 histórico](contracts/rest/ms1-seguridad.yaml) | **Obsoleto, no implementado por ms-erp**; login es responsabilidad de Keycloak |
 | [REST MS2](contracts/rest/ms2-clinico.yaml) / [REST MS3](contracts/rest/ms3-agendamiento.yaml) | Conservados sin cambios |
 | [Eventos ERP](contracts/events/README.md) | Consulta finalizada plana; seis eventos `catalogo.*` sin envelope inventado |
