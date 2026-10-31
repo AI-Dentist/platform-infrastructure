@@ -45,8 +45,11 @@ administrativa autorizada; esta plantilla no incluye usuarios, contraseñas ni s
 direct access grants ni service account. Solo permite origen
 `http://localhost:4201`; no usa `*` ni `+` para web origins. Los scopes estándar
 `profile` y `roles` aportan `preferred_username` y `realm_access.roles` en Keycloak.
-El mapper agrega audiencia `ms-erp` al access token, no al ID token. La plantilla
-no incorpora el cliente de password grant para pruebas del backend.
+Los mappers del cliente integrado `mf-erp` agregan las audiencias de recurso
+`ms-erp`, `ms2-clinico-ia` y `ms3-agenda-stock` **solo al access token**, no al
+ID token ni a userinfo. Se conserva `ms-erp`; los otros dos recursos permiten
+preparar el contrato de un token de usuario reenviado al backend de destino.
+La plantilla no incorpora el cliente de password grant para pruebas del backend.
 
 ## 3. Variables reales y conectividad
 
@@ -92,10 +95,39 @@ seguridad para hacer pasar pruebas. Un Bearer inválido no debe caer en ese head
 
 ## 4. Límites y verificación pendiente
 
-El backend publicado **no valida la audiencia**. Emitir `aud: ms-erp` prepara el
-contrato, pero no garantiza aislamiento frente a tokens de otros clientes del
-mismo realm. Corregir ese límite requiere un cambio backend autorizado, fuera de
-esta unidad; no se debe presentar el mapper como enforcement del receptor.
+### Contrato esperado de los receptores
+
+Cada backend debe validar firma, expiración, issuer exacto y su propia audiencia
+de recurso antes de ejecutar operaciones. El issuer integrado esperado es
+`http://localhost:8180/realms/dental-platform` en este ejemplo local; en otro
+entorno debe sustituirse de forma coherente con discovery y el claim `iss`.
+La audiencia esperada no es el nombre del realm ni el cliente `mf-erp`.
+
+| Receptor | Configuración de issuer | Audiencia esperada |
+|---|---|---|
+| ms-erp | `KEYCLOAK_ISSUER_URI` o `ERP_LOCAL_JWT_ISSUER_URI`, según la cadena activa | `ms-erp` |
+| ms2-clinico-ia | `KEYCLOAK_URL` sin barra final + `/realms/` + `KEYCLOAK_REALM` | `KEYCLOAK_AUDIENCE=ms2-clinico-ia` |
+| ms3-agenda-stock | `KEYCLOAK_BASE_URL` sin barra final + `/realms/` + `KEYCLOAK_REALM` | `KEYCLOAK_AUDIENCE=ms3-agenda-stock` |
+
+Para MS2/MS3, configurar la URL base pública del ejemplo como
+`http://localhost:8180` y `KEYCLOAK_REALM=dental-platform`. Estas variables deben
+resolver al mismo issuer exacto, no a una dirección interna distinta. El contrato
+requiere aceptar `aud` como string igual al recurso esperado o como array que lo
+contenga exactamente; rechazar claims ausentes o incorrectos, sin bypass.
+Al reenviar un token de usuario, debe estar incluida la audiencia del destino;
+esto no sustituye la autorización por roles ni los vínculos de identidad de BD.
+
+### Estado de enforcement y alcance de esta unidad
+
+El backend ERP publicado **no valida la audiencia**. MS2/MS3 tampoco validaban
+issuer/audiencia en las bases analizadas para esta integración. Los cambios de
+validación de los tres receptores son unidades backend separadas, propuestas o
+en curso; esta plantilla no los implementa ni demuestra su aceptación/despliegue.
+No se inventa una variable ERP de audiencia: su enforcement sigue pendiente de
+un cambio backend autorizado. Emitir las tres audiencias prepara el contrato,
+pero no garantiza aislamiento frente a tokens de otros clientes del mismo realm.
+No se debe presentar el mapper como enforcement del receptor ni como SSO con
+`odontoclinic-realm`. No se ha importado el ejemplo ni probado emisión en vivo.
 
 Verificación estructural, sin red ni servicios:
 
@@ -104,7 +136,8 @@ python -m unittest discover -s scripts/tests -p test_identity.py -v
 ```
 
 Las pruebas comprueban separación de realms, preservación legacy, roles crudos,
-PKCE, flujos deshabilitados, origen explícito, mapper y ausencia de credenciales.
+PKCE, flujos deshabilitados, origen explícito, los tres mappers de audiencia
+exclusivos del access token y ausencia de credenciales.
 No demuestran una importación real ni emisión/verificación criptográfica de JWT.
 Antes de un uso compartido quedan pendientes, en entorno aislado autorizado:
 importación sin alterar el realm legacy, discovery/JWKS desde el ERP, login PKCE,

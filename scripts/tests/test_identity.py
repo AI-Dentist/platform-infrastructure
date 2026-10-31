@@ -73,13 +73,21 @@ class ErpIdentityTests(unittest.TestCase):
         self.assertIn("roles", client["defaultClientScopes"])
         mappers = client["protocolMappers"]
         audience = [m for m in mappers if m["protocolMapper"] == "oidc-audience-mapper"]
-        self.assertEqual(len(audience), 1)
-        self.assertEqual(audience[0]["protocol"], "openid-connect")
-        self.assertEqual(audience[0]["config"], {
-            "included.custom.audience": "ms-erp",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-        })
+        self.assertCountEqual(
+            [m["config"]["included.custom.audience"] for m in audience],
+            ["ms-erp", "ms2-clinico-ia", "ms3-agenda-stock"],
+        )
+        for mapper in audience:
+            resource = mapper["config"]["included.custom.audience"]
+            with self.subTest(resource=resource):
+                self.assertEqual(mapper["name"], resource + "-audience")
+                self.assertEqual(mapper["protocol"], "openid-connect")
+                self.assertEqual(mapper["config"], {
+                    "included.custom.audience": resource,
+                    "id.token.claim": "false",
+                    "access.token.claim": "true",
+                    "userinfo.token.claim": "false",
+                })
 
     def test_examples_have_no_users_or_credentials(self):
         def inspect(value):
