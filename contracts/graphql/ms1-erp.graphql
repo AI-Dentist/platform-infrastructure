@@ -112,6 +112,7 @@ type Mutation {
   generarQrPagoFacil(ciNitCliente: String!, cuotaId: UUID!, razonSocialCliente: String!): TransaccionQr!
   registrarEgresoCaja(input: RegistrarEgresoInput!): MovimientoCaja!
   simularConfirmacionQrDev(pagofacilTransactionId: String!): Recibo!
+  vincularIdentidadOdontologo(input: VincularIdentidadOdontologoInput!): UUID!
 }
 
 type Odontologo {
@@ -181,6 +182,8 @@ type Query {
   obtenerConfiguracionEmpresa: EmpresaConfig!
   obtenerEstadoServidorMcp: McpServerStatus!
   obtenerFlujoCaja(fechaFin: DateTime!, fechaInicio: DateTime!): ResumenFlujoCaja!
+  " Canonical identity from the verified JWT subject, never a caller-supplied identifier."
+  obtenerMiOdontologoId: UUID!
   obtenerOrdenCobroDetalle(id: UUID!): OrdenCobro
   obtenerPacientePorId(id: UUID!): Paciente
 }
@@ -433,4 +436,11 @@ input RegistrarEgresoInput {
   metodoPago: MetodoPago!
   montoBs: BigDecimal!
   usuarioCajeroId: UUID!
+}
+
+"ADMIN provisioning only; subject is opaque, case-sensitive, nonblank, at most 100 characters."
+input VincularIdentidadOdontologoInput {
+  keycloakSubject: String!
+  odontologoId: UUID!
+  usuarioId: UUID!
 }

@@ -206,7 +206,7 @@ class IntrospectionReferenceTest(unittest.TestCase):
         reference = source['references']['introspection']
         self.assertEqual(reference['source'], 'docs/graphql/introspection.json')
         self.assertEqual(reference['sha256'],
-                         'ec392a07faf6ce6ae938bd9c17a208b3ef78cd884de2376774d06f099575fd4d')
+                         'c8a3cba85a3ddd58177687ea836ebbad0ae1ea01e35339a60734b4abad7748d9')
         self.assertIn('/' + source['commit'] + '/', reference['url'])
         self.assertFalse((CONTRACT / 'ms1-erp.introspection.json').exists())
 
@@ -216,6 +216,30 @@ class GraphQLContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.schema = schema_from_sdl((CONTRACT / 'ms1-erp.graphql').read_text(encoding='utf-8'))
         cls.types = {t['name']: t for t in cls.schema['types']}
+
+    def test_canonical_self_identity_and_admin_provisioning_signatures(self):
+        queries = {f['name']: f for f in self.types['Query']['fields']}
+        mutations = {f['name']: f for f in self.types['Mutation']['fields']}
+        self.assertIn('obtenerMiOdontologoId', queries)
+        lookup = queries['obtenerMiOdontologoId']
+        self.assertEqual(signature(lookup['type']), 'UUID!')
+        self.assertEqual(lookup['args'], [])
+        self.assertIn('vincularIdentidadOdontologo', mutations)
+        provisioning = mutations['vincularIdentidadOdontologo']
+        self.assertEqual(signature(provisioning['type']), 'UUID!')
+        self.assertEqual(
+            [(a['name'], signature(a['type']), a['defaultValue'])
+             for a in provisioning['args']],
+            [('input', 'VincularIdentidadOdontologoInput!', None)],
+        )
+        definition = self.types['VincularIdentidadOdontologoInput']
+        self.assertEqual(definition['kind'], 'INPUT_OBJECT')
+        self.assertEqual(
+            {f['name']: (signature(f['type']), f['defaultValue'])
+             for f in definition['inputFields']},
+            {'usuarioId': ('UUID!', None), 'odontologoId': ('UUID!', None),
+             'keycloakSubject': ('String!', None)},
+        )
 
     def test_effective_operations_replace_old_proposal(self):
         schema = (CONTRACT / 'ms1-erp.graphql').read_text(encoding='utf-8')
