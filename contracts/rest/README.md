@@ -52,6 +52,11 @@ válida con permisos adecuados y gestionar su vigencia fuera de este contrato.
 No guardar credenciales en este repositorio, logs ni ejemplos; no inferir que
 el reenvío del token propio ya resuelve también esos dos adaptadores.
 
+El validador de citas MS3 usa de forma equivalente `MS3_BEARER_TOKEN`; si falta,
+no envía Authorization al consultar citas. Debe configurarse un token válido
+para ese receptor y gestionar su vigencia. El Bearer del usuario no se propaga
+automáticamente a esta llamada por el solo hecho de resolver su identidad ERP.
+
 ## MS3: agenda y stock
 
 Las citas admiten `ADMIN`, `RECEPCIONISTA` y `ODONTOLOGO`; los horarios de lectura
