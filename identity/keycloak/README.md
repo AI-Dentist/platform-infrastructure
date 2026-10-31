@@ -119,15 +119,22 @@ esto no sustituye la autorización por roles ni los vínculos de identidad de BD
 
 ### Estado de enforcement y alcance de esta unidad
 
-El backend ERP publicado **no valida la audiencia**. MS2/MS3 tampoco validaban
-issuer/audiencia en las bases analizadas para esta integración. Los cambios de
-validación de los tres receptores son unidades backend separadas, propuestas o
-en curso; esta plantilla no los implementa ni demuestra su aceptación/despliegue.
-No se inventa una variable ERP de audiencia: su enforcement sigue pendiente de
-un cambio backend autorizado. Emitir las tres audiencias prepara el contrato,
-pero no garantiza aislamiento frente a tokens de otros clientes del mismo realm.
-No se debe presentar el mapper como enforcement del receptor ni como SSO con
-`odontoclinic-realm`. No se ha importado el ejemplo ni probado emisión en vivo.
+El snapshot ERP publicado referenciado por el contrato GraphQL **no valida la audiencia**.
+Las validaciones de issuer/audiencia de los tres receptores fueron implementadas
+y verificadas en unidades backend separadas; eso no acredita su publicación ni
+su despliegue. Verificar la versión realmente ejecutada antes de usar este perfil.
+
+En una versión ERP compatible, configurar `ERP_JWT_AUDIENCE=ms-erp`
+(`erp.security.jwt.audience`), tanto para la cadena normal como para la local.
+El valor predeterminado es `ms-erp`; una configuración vacía no debe desactivar
+la validación. La audiencia debe ser un string exacto o una lista de strings que
+contenga el recurso esperado; no aceptar elementos nulos o de otro tipo.
+Esta opción no agrega enforcement a una versión anterior que la desconozca.
+
+Emitir las tres audiencias prepara el contrato, pero no garantiza aislamiento
+frente a tokens de otros clientes del mismo realm. El mapper no valida los
+receptores ni habilita SSO con `odontoclinic-realm`. No se ha importado este
+ejemplo ni probado aquí su emisión en vivo.
 
 Verificación estructural, sin red ni servicios:
 

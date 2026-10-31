@@ -140,7 +140,7 @@ Comprobar tanto el status HTTP como `errors[]`: un HTTP 200 no demuestra éxito 
 negocio. Un 401/403 o 502 tampoco demuestra integración. El realm compatible del
 ERP es `dental-platform`, con roles sin prefijo `ROLE_` en el token. No usar
 `X-Dev-User` ni el perfil `dev` como sustituto de JWT. La publicación de esta API
-no demuestra enforcement de audiencia ERP: el cambio T3b es una unidad separada;
+no demuestra enforcement de audiencia ERP: requiere una versión backend compatible;
 no se afirma su despliegue ni integración completa entre servicios.
 
 Los reportes generan URLs relativas `/api/v1/reports/export/{reporteId}/{format}`
