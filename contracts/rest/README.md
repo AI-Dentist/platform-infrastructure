@@ -60,6 +60,7 @@ requieren autenticación. Mantener las reglas específicas del servicio para sto
 | Operación | Ruta bajo `/api/agendamiento` | Input relevante |
 |---|---|---|
 | Consultar horarios | `GET /horarios` | `odontologo_id` opcional |
+| Crear horario (solo ADMIN) | `POST /horarios` | `odontologo_id`, `consultorio_id`, `especialidad`, `fecha`, `hora_inicio`, `hora_fin`; `disponible` opcional |
 | Listar / leer cita | `GET /citas`, `GET /citas/{id}` | Filtros / ID del servicio |
 | Reservar cita | `POST /citas` | `odontologo_id`, `consultorio_id`, `paciente_id`, `fecha_hora`; clave de idempotencia requerida |
 | Cancelar | `PATCH /citas/{id}/cancelar` | Sin body |
@@ -68,6 +69,22 @@ requieren autenticación. Mantener las reglas específicas del servicio para sto
 | Marcar ausencia | `PATCH /citas/{id}/no-asistio` | ID de la cita |
 | Leer stock / movimientos / kardex | `GET /stock`, `POST /stock/movimientos`, `GET /stock/{id}/kardex` | DTO de insumos físicos del servicio |
 
+El alta de horarios exige un JWT ADMIN válido. Consulta los catálogos ERP con
+el Bearer del caller, valida odontólogo activo y consultorio `estado: ACTIVO`,
+y persiste los UUID canónicos devueltos, no una representación elegida por el
+caller. Genera un nuevo ID `hor-<uuid>`; no migra ni reemplaza seeds existentes.
+`fecha` usa `YYYY-MM-DD`; ambos horarios exigen `HH:MM` de 24 horas e inicio
+anterior al fin. `disponible` tiene valor predeterminado `true`.
+
+Configurar `MS1_GRAPHQL_URL` (predeterminado `http://127.0.0.1:8081/graphql`)
+y `MS1_TIMEOUT_MS` (predeterminado `2000`). El token debe servir también para
+el recurso ERP. Los rechazos de autenticación/rol usan 401/403; los datos o
+referencias inválidos, 422. Fallos de transporte, errores GraphQL o respuestas
+de catálogo inesperadas producen 502 genérico, sin reenviar mensajes internos,
+URLs ni tokens. Las respuestas exitosas devuelven `201` y el horario en `data`;
+se puede leer mediante `GET /horarios`. No hay sincronización automática de
+catálogos ni escritura directa en la BD por parte del cliente.
+
 La reserva acepta aliases camelCase documentados por MS3, pero no obliga a
 cambiar IDs maestros por números de sillón. `paciente_id` es obligatorio: no se
 admite un paciente nulo. MS3 reconoce `Idempotency-Key` o `X-Idempotency-Key` en
@@ -75,8 +92,10 @@ la reserva y distingue creación de replay; no trasladar ese comportamiento a
 otras operaciones sin evidencia.
 
 Estados reales: `RESERVADA`, `EN_ATENCION`, `COMPLETADA`, `CANCELADA`,
-`REPROGRAMADA`, `NO_ASISTIO`. No existen los aliases `PROGRAMADA`, `CONFIRMADA`
-o `FINALIZADA`. Las acciones explícitas sustituyen la propuesta
+`REPROGRAMADA`, `NO_ASISTIO`. Una cita reprogramada conserva su ID y puede
+iniciar atención en MS2 sin confirmación adicional, siempre que coincida el
+paciente y se cumplan las demás validaciones. Las citas cerradas siguen
+rechazándose. No existen los aliases MS3 `PROGRAMADA`, `CONFIRMADA` o `FINALIZADA`. Las acciones explícitas sustituyen la propuesta
 `PATCH /citas/{id}/estado`; `/horarios` no es `/disponibilidad`.
 
 El envelope MS3 usa `success`, `data` y `timestamp`; algunas listas conservan
