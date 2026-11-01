@@ -75,8 +75,10 @@ requieren autenticación. Mantener las reglas específicas del servicio para sto
 | Leer stock / movimientos / kardex | `GET /stock`, `POST /stock/movimientos`, `GET /stock/{id}/kardex` | DTO de insumos físicos del servicio |
 
 El alta de horarios exige un JWT ADMIN válido. Consulta los catálogos ERP con
-el Bearer del caller, valida odontólogo activo y consultorio `estado: ACTIVO`,
-y persiste los UUID canónicos devueltos, no una representación elegida por el
+el Bearer del caller, valida odontólogo activo y la actividad canónica del
+consultorio: `DISPONIBLE` o `MANTENIMIENTO`; rechaza `INACTIVO` y estados
+desconocidos. Actividad referencial no introduce una nueva regla de disponibilidad
+para reservar citas. Persiste los UUID canónicos devueltos, no una representación elegida por el
 caller. Genera un nuevo ID `hor-<uuid>`; no migra ni reemplaza seeds existentes.
 `fecha` usa `YYYY-MM-DD`; ambos horarios exigen `HH:MM` de 24 horas e inicio
 anterior al fin. `disponible` tiene valor predeterminado `true`.
