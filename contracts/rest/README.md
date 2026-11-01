@@ -70,7 +70,7 @@ requieren autenticación. Mantener las reglas específicas del servicio para sto
 | Reservar cita | `POST /citas` | `odontologo_id`, `consultorio_id`, `paciente_id`, `fecha_hora`; clave de idempotencia requerida |
 | Cancelar | `PATCH /citas/{id}/cancelar` | Sin body |
 | Reprogramar | `PUT /citas/{id}/reprogramar` | `nueva_fecha_hora`; conserva el ID |
-| Completar | `PATCH /citas/{id}/completar` | `insumos_utilizados: [{insumo_id, cantidad}]` opcional |
+| Completar | `PATCH /citas/{id}/completar` | `insumos: [{insumo_id, cantidad}]` opcional |
 | Marcar ausencia | `PATCH /citas/{id}/no-asistio` | ID de la cita |
 | Leer stock / movimientos / kardex | `GET /stock`, `POST /stock/movimientos`, `GET /stock/{id}/kardex` | DTO de insumos físicos del servicio |
 
@@ -108,8 +108,9 @@ rechazándose. No existen los aliases MS3 `PROGRAMADA`, `CONFIRMADA` o `FINALIZA
 El envelope MS3 usa `success`, `data` y `timestamp`; algunas listas conservan
 campos duplicados de compatibilidad. Los errores usan `success: false`, `error`,
 `code` y `timestamp`, no una promesa general de Problem Details.
-Completar con insumos aplica la operación atómica de cita, stock y movimientos
-propia de MS3. Cerrar la consulta clínica no ejecuta automáticamente esa acción:
+Completar recibe `insumos`, no `insumos_utilizados`. La respuesta contiene la
+cita directamente en `data` y `insumos_descontados` y `movimientos` en el nivel
+superior. La operación aplica la transacción de cita, stock y movimientos de MS3. Cerrar la consulta clínica no ejecuta automáticamente esa acción:
 el cliente debe aportar los insumos efectivamente usados. No deducirlos del
 catálogo de servicios facturables ni suponer un consumidor Rabbit inexistente.
 
