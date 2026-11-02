@@ -113,6 +113,7 @@ type Mutation {
   registrarEgresoCaja(input: RegistrarEgresoInput!): MovimientoCaja!
   simularConfirmacionQrDev(pagofacilTransactionId: String!): Recibo!
   vincularIdentidadOdontologo(input: VincularIdentidadOdontologoInput!): UUID!
+  vincularIdentidadUsuario(input: VincularIdentidadUsuarioInput!): UUID!
 }
 
 type Odontologo {
@@ -184,6 +185,8 @@ type Query {
   obtenerFlujoCaja(fechaFin: DateTime!, fechaInicio: DateTime!): ResumenFlujoCaja!
   " Canonical identity from the verified JWT subject, never a caller-supplied identifier."
   obtenerMiOdontologoId: UUID!
+  " ADMIN/CAJERO: exact verified JWT subject -> active ERP user, without a doctor dependency."
+  obtenerMiUsuarioId: UUID!
   obtenerOrdenCobroDetalle(id: UUID!): OrdenCobro
   obtenerPacientePorId(id: UUID!): Paciente
 }
@@ -442,5 +445,11 @@ input RegistrarEgresoInput {
 input VincularIdentidadOdontologoInput {
   keycloakSubject: String!
   odontologoId: UUID!
+  usuarioId: UUID!
+}
+
+"ADMIN user-only provisioning; opaque subject unchanged, nonblank, at most 100 Unicode code points."
+input VincularIdentidadUsuarioInput {
+  keycloakSubject: String!
   usuarioId: UUID!
 }

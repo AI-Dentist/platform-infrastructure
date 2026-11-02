@@ -1,18 +1,27 @@
 # Contrato efectivo GraphQL del ERP
 
-El contrato MS1 replica los artefactos canónicos de la **revisión feature publicada**
-[587ba426bd684e37f85b0adaf05db4adc8ae8fd2 de ms-erp](https://github.com/AI-Dentist/ms-erp/tree/587ba426bd684e37f85b0adaf05db4adc8ae8fd2).
-Esta referencia inmutable incluye la API de identidad; no implica incorporación a
-main, release ni despliegue. No modifica los contratos MS2/MS3.
+El contrato MS1 replica los artefactos canónicos de la **revisión local verificada**
+`9d6066259a625f9097b06cd42b15194a8004c547` de ms-erp, que añade la identidad del
+usuario ERP y conserva la identidad odontológica. **Esta revisión no fue publicada**:
+no implica push, incorporación a main, release ni despliegue. La última revisión
+publicada de referencia es
+[587ba426bd684e37f85b0adaf05db4adc8ae8fd2](https://github.com/AI-Dentist/ms-erp/tree/587ba426bd684e37f85b0adaf05db4adc8ae8fd2).
+No modifica los contratos MS2/MS3.
 
 ## Fuente y verificación
 
-| Archivo local | Fuente publicada |
+| Archivo local | Fuente en la revisión fijada |
 |---|---|
 | `ms1-erp.graphql` | `docs/graphql/schema.graphqls` |
 | Referencia en `source.json` | `docs/graphql/introspection.json` completo, URL fijada a commit y SHA-256; no se duplica el JSON generado |
-| `source.json` | Revisión y SHA-256 del SDL y la introspección canónicos |
+| `source.json` | Revisión, disponibilidad local/no publicada, último ancestro publicado y SHA-256 de los artefactos |
 | `examples.json` | Cuatro operaciones reales y variables ficticias |
+
+La URL inmutable de introspección identifica la revisión; puede no estar disponible
+remotamente hasta una publicación autorizada. `availability: verified-local-unpublished`
+no promete una descarga exitosa. Los hashes corresponden a los blobs Git canónicos,
+no a una copia de trabajo con finales de línea diferentes. La introspección completa
+se mantiene en el backend: no se agrega otra copia generada aquí.
 
 Ejecutar desde la raíz, sin servicios ni instalaciones:
 
@@ -133,6 +142,32 @@ de dominio, distinta del replay HTTP mediante `Idempotency-Key`.
 
 Las pruebas locales comprueban las firmas y los inputs publicados, no ejecutan
 resolvers ni prueban estos permisos o invariantes en un servicio vivo.
+
+## Identidad canónica del usuario financiero
+
+El JWT `sub`, el UUID de usuario ERP y el UUID de odontólogo no son intercambiables.
+Para ADMIN/CAJERO, consultar sin argumentos:
+
+```graphql
+query MiUsuarioERP { obtenerMiUsuarioId }
+```
+
+Devuelve `UUID!` del usuario activo asociado al subject exacto verificado; no usa
+username/email, no crea datos y no requiere un odontólogo. El frontend debe resolverlo
+solo al necesitar finanzas, sin bloquear el ingreso de ODONTOLOGO/RECEPCIONISTA.
+
+Solo ADMIN puede ejecutar
+`vincularIdentidadUsuario(input: VincularIdentidadUsuarioInput!): UUID!`, con
+`usuarioId: UUID!` y `keycloakSubject: String!`. Vincula un usuario existente activo,
+conserva el subject opaco no blanco de hasta 100 puntos de código y audita un vínculo
+nuevo. Repetir el enlace exacto no agrega auditoría; los conflictos no lo reasignan.
+Para odontólogos, usar primero el aprovisionador pareado: un enlace solo de usuario
+no repara el vínculo parcial que aquel rechaza intencionalmente.
+
+Las mutaciones financieras siguen recibiendo `usuarioCajeroId`; obtener el ID propio
+**no certifica una política servidor self-only** ni cambia la autorización de actuar
+en nombre de otro usuario. Las pruebas estructurales de este repositorio no ejecutan
+resolvers: la aceptación backend es independiente del futuro flujo real de navegador.
 
 ## Errores, identidad y límites
 

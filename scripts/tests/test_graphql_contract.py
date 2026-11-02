@@ -206,7 +206,10 @@ class IntrospectionReferenceTest(unittest.TestCase):
         reference = source['references']['introspection']
         self.assertEqual(reference['source'], 'docs/graphql/introspection.json')
         self.assertEqual(reference['sha256'],
-                         'c8a3cba85a3ddd58177687ea836ebbad0ae1ea01e35339a60734b4abad7748d9')
+                         'bcf2e7474d5fdbb63e26092a63eb8f003b7f7c9b08fa72f59890b843405d0fd6')
+        self.assertEqual(source['availability'], 'verified-local-unpublished')
+        self.assertEqual(source['publishedAncestor'],
+                         '587ba426bd684e37f85b0adaf05db4adc8ae8fd2')
         self.assertIn('/' + source['commit'] + '/', reference['url'])
         self.assertFalse((CONTRACT / 'ms1-erp.introspection.json').exists())
 
@@ -216,6 +219,31 @@ class GraphQLContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.schema = schema_from_sdl((CONTRACT / 'ms1-erp.graphql').read_text(encoding='utf-8'))
         cls.types = {t['name']: t for t in cls.schema['types']}
+
+    def test_financial_user_identity_has_strict_self_and_binding_signatures(self):
+        queries = {f['name']: f for f in self.types['Query']['fields']}
+        mutations = {f['name']: f for f in self.types['Mutation']['fields']}
+        self.assertTrue('obtenerMiUsuarioId' in queries,
+                        'Canonical financial self query is missing')
+        lookup = queries['obtenerMiUsuarioId']
+        self.assertEqual(signature(lookup['type']), 'UUID!')
+        self.assertEqual(lookup['args'], [])
+        self.assertTrue('vincularIdentidadUsuario' in mutations,
+                        'Controlled user identity binding is missing')
+        binding = mutations['vincularIdentidadUsuario']
+        self.assertEqual(signature(binding['type']), 'UUID!')
+        self.assertEqual(
+            [(a['name'], signature(a['type']), a['defaultValue'])
+             for a in binding['args']],
+            [('input', 'VincularIdentidadUsuarioInput!', None)],
+        )
+        definition = self.types['VincularIdentidadUsuarioInput']
+        self.assertEqual(definition['kind'], 'INPUT_OBJECT')
+        self.assertEqual(
+            {f['name']: (signature(f['type']), f['defaultValue'])
+             for f in definition['inputFields']},
+            {'usuarioId': ('UUID!', None), 'keycloakSubject': ('String!', None)},
+        )
 
     def test_canonical_self_identity_and_admin_provisioning_signatures(self):
         queries = {f['name']: f for f in self.types['Query']['fields']}
