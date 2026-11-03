@@ -35,21 +35,38 @@ administrativa autorizada; esta plantilla no incluye usuarios, contraseñas ni s
 2. Configurar el frontend con issuer
    `http://localhost:8180/realms/dental-platform`, cliente `mf-erp`,
    `response_type=code`, `scope=openid profile` y PKCE **S256** obligatorio.
-   Redirect y logout: `http://localhost:4201/` (rutas bajo ese origen).
+   Redirect y logout: `http://localhost:4201/` (rutas bajo ese origen). El
+   perfil del navegador local `http://localhost:4200` registra solo valores
+   exactos, sin comodines: redirect `http://localhost:4200/auth/callback`,
+   web origin `http://localhost:4200` y post-logout `http://localhost:4200/`.
+   Los valores 4201 existentes se conservan.
 3. Enviar el **access token**, no el ID token, como `Authorization: Bearer <token>`
    al ERP detrás del Gateway. No usar password grant ni `X-Dev-User` para integrar.
 4. Fijar `ERP_PORT=8081` y la variable de issuer correspondiente al modo de abajo.
    Verificar discovery, JWKS y JWT antes de declarar funcional la integración.
 
 `mf-erp` es público, sin secreto, con authorization code y sin flujo implícito,
-direct access grants ni service account. Solo permite origen
-`http://localhost:4201`; no usa `*` ni `+` para web origins. Los scopes estándar
+direct access grants ni service account. Solo permite los orígenes
+`http://localhost:4201` y `http://localhost:4200`; no usa `*` ni `+` para web origins. Los scopes estándar
 `profile` y `roles` aportan `preferred_username` y `realm_access.roles` en Keycloak.
 Los mappers del cliente integrado `mf-erp` agregan las audiencias de recurso
 `ms-erp`, `ms2-clinico-ia` y `ms3-agenda-stock` **solo al access token**, no al
 ID token ni a userinfo. Se conserva `ms-erp`; los otros dos recursos permiten
 preparar el contrato de un token de usuario reenviado al backend de destino.
 La plantilla no incorpora el cliente de password grant para pruebas del backend.
+
+### Registro 4200 y rotación de refresh tokens
+
+- `post.logout.redirect.uris` es un atributo multivalor: Keycloak 26.8.1 separa los
+  valores con el delimitador `##` (`Constants.CFG_DELIMITER`), no con coma ni
+  espacio. Valor actual: `http://localhost:4201/*##http://localhost:4200/`.
+- A nivel de realm se fijan `revokeRefreshToken: true` (Boolean) y
+  `refreshTokenMaxReuse: 0` (Integer): cada refresh token es de un solo uso.
+  Aplica a todos los clientes de `dental-platform`; el realm legacy no cambia.
+- **Configuración estática no demuestra rotación en vivo.** Que el JSON declare
+  estos campos no prueba que una instancia importada los aplique ni que un
+  refresh reutilizado sea rechazado; esa prueba real (importación, login PKCE,
+  refresh, reutilización) pertenece a T10.
 
 ## 3. Variables reales y conectividad
 
@@ -143,7 +160,8 @@ python -m unittest discover -s scripts/tests -p test_identity.py -v
 ```
 
 Las pruebas comprueban separación de realms, preservación legacy, roles crudos,
-PKCE, flujos deshabilitados, origen explícito, los tres mappers de audiencia
+PKCE, flujos deshabilitados, orígenes explícitos 4201/4200 sin comodines para 4200,
+delimitador `##`, campos de rotación, los tres mappers de audiencia
 exclusivos del access token y ausencia de credenciales.
 No demuestran una importación real ni emisión/verificación criptográfica de JWT.
 Antes de un uso compartido quedan pendientes, en entorno aislado autorizado:

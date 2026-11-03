@@ -62,10 +62,26 @@ class ErpIdentityTests(unittest.TestCase):
                      "serviceAccountsEnabled", "bearerOnly"):
             self.assertFalse(client[flag], flag)
         self.assertEqual(client["attributes"]["pkce.code.challenge.method"], "S256")
-        self.assertEqual(client["redirectUris"], ["http://localhost:4201/*"])
-        self.assertEqual(client["webOrigins"], ["http://localhost:4201"])
+        self.assertEqual(client["redirectUris"], [
+            "http://localhost:4201/*", "http://localhost:4200/auth/callback",
+        ])
+        self.assertEqual(client["webOrigins"], [
+            "http://localhost:4201", "http://localhost:4200",
+        ])
+        # Keycloak 26.8.1 stores multivalued client attributes with "##".
         self.assertEqual(client["attributes"]["post.logout.redirect.uris"],
-                         "http://localhost:4201/*")
+                         "http://localhost:4201/*##http://localhost:4200/")
+        for value in (client["redirectUris"] + client["webOrigins"]
+                      + client["attributes"]["post.logout.redirect.uris"].split("##")):
+            if "4200" in value:
+                self.assertNotIn("*", value)
+                self.assertNotIn("+", value)
+
+    def test_refresh_rotation_is_single_use_at_realm_level(self):
+        self.assertIs(self.realm["revokeRefreshToken"], True)
+        self.assertEqual(self.realm["refreshTokenMaxReuse"], 0)
+        self.assertNotIn("revokeRefreshToken", load_realm("realm-config.example.json"))
+        self.assertNotIn("refreshTokenMaxReuse", load_realm("realm-config.example.json"))
 
     def test_roles_and_audience_are_in_access_tokens(self):
         client = self.realm["clients"][0]
@@ -111,6 +127,8 @@ class ErpIdentityTests(unittest.TestCase):
             "realm_access.roles", "preferred_username", "ROLE_ROLE_ADMIN",
             "http://localhost:8180/realms/dental-platform", "127.0.0.1",
             "discovery", "JWKS", "X-Dev-User", "no valida la audiencia",
+            "http://localhost:4200/auth/callback", "##", "revokeRefreshToken",
+            "refreshTokenMaxReuse", "T10",
         ):
             self.assertIn(required, text)
 

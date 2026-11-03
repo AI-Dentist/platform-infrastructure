@@ -10,6 +10,8 @@
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
   "accessTokenLifespan": 900,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
   "roles": {
     "realm": [
       {"name": "ADMIN", "description": "Administracion del ERP"},
@@ -30,11 +32,11 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:4201/*"],
-      "webOrigins": ["http://localhost:4201"],
+      "redirectUris": ["http://localhost:4201/*", "http://localhost:4200/auth/callback"],
+      "webOrigins": ["http://localhost:4201", "http://localhost:4200"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4201/*"
+        "post.logout.redirect.uris": "http://localhost:4201/*##http://localhost:4200/"
       },
       "defaultClientScopes": ["profile", "email", "roles"],
       "protocolMappers": [

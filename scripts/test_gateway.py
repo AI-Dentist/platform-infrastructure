@@ -4,8 +4,10 @@ import argparse
 import contextlib
 import http.client
 import json
+import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,17 +30,124 @@ HEADERS = {
     "X-Correlation-Id": "transport-only",
 }
 ORIGIN = "http://localhost:4201"
+ORIGIN_LOCAL = "http://localhost:4200"
 ALLOWED = ["Authorization", "Content-Type", "Accept", "Idempotency-Key",
            "Mcp-Session-Id", "MCP-Protocol-Version", "Last-Event-ID", "X-Correlation-ID"]
+EXPOSED = "Mcp-Session-Id, Content-Disposition, Idempotency-Replayed"
 PDF = b"%PDF-1.7\n\x00synthetic\xff"
 XLSX = b"PK\x03\x04\x00synthetic-xlsx\xff"
+# 4200 is scoped to these two public surfaces; everything else is 4201-only.
+UNSCOPED_FOR_4200 = (
+    "/mcp", "/api/v1/webhooks/pagofacil", "/api/seguridad/probe",
+    "//mcp", "/api/erp/graphql/../../../mcp",
+    "/api/erp/graphql/%2e%2e/%2e%2e/%2e%2e/mcp",
+    "/api/erp/graphql/%2E%2E/%2E%2E/%2E%2E/mcp",
+    "/api/erp/graphql/../../../api/v1/webhooks/pagofacil",
+    "/api/erp/graphql/../../../api/seguridad/probe",
+    "/api/v1/reports/export/../../../../mcp",
+    "/api/v1/reports/export/%2e%2e/%2e%2e/%2e%2e/%2e%2e/mcp",
+    "/api/v1/reports/export/../../../../api/v1/webhooks/pagofacil",
+    "/api/v1/reports/export/../../../../api/seguridad/probe",
+    "/api/v1/reports/export/../../../../api/erp/graphql/extra",
+)
+
+# Harness safety: bounded docker calls, allowlisted environment, owned resources only.
+LABEL_KEY = "gentle.gateway.test.run"
+DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
+DOCKER_TIMEOUT = 60
+OS_KEYS = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP"}
+ID_PATTERN = re.compile(r"[0-9a-f]{64}")
+KINDS = ("container", "network")
 
 
-def docker(*args):
-    result = subprocess.run(["docker", *args], capture_output=True, text=True)
-    if result.returncode:
-        raise RuntimeError(f"docker {' '.join(args)}: {result.stderr.strip()}")
-    return result.stdout.strip()
+def child_env(source, overrides):
+    """Allowlisted child environment; nothing else is inherited."""
+    return {**{k: v for k, v in source.items() if k.upper() in OS_KEYS}, **overrides}
+
+
+def make_runner(env, timeout=DOCKER_TIMEOUT):
+    """Run an argv with a bounded time and the given environment only."""
+    def run(args):
+        try:
+            result = subprocess.run(args, env=env, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"{' '.join(args[:3])}: timed out after {timeout}s") from None
+        if result.returncode:
+            raise RuntimeError(f"{' '.join(args[:3])}: {result.stderr.strip()}")
+        return result.stdout.strip()
+    return run
+
+
+def label_template(kind):
+    labels = ".Config.Labels" if kind == "container" else ".Labels"
+    return "{{index " + labels + ' "' + LABEL_KEY + '"}}'
+
+
+def recover_owned(run, kind, owner, intended_names):
+    """Find resources carrying this owner label AND one of the intended names."""
+    if kind not in KINDS or not owner:
+        raise RuntimeError("Invalid recovery scope")
+    args = ["docker", kind, "ls", "-q", "--no-trunc"]
+    if kind == "container":
+        args.append("-a")
+    args += ["--filter", f"label={LABEL_KEY}={owner}"]
+    found = []
+    for identifier in run(args).split():
+        value = run(["docker", kind, "inspect", "--format",
+                     "{{.Name}}|" + label_template(kind), identifier])
+        name, separator, label = value.partition("|")
+        if separator and label == owner and name.lstrip("/") in intended_names:
+            found.append(identifier)
+    return found
+
+
+def remove_owned(run, resource, kind, owner):
+    """Remove a resource only after re-reading its ownership label."""
+    if kind not in KINDS or not resource or not owner:
+        raise RuntimeError("Invalid cleanup scope")
+    label = run(["docker", kind, "inspect", "--format", label_template(kind), resource])
+    if label != owner:
+        raise RuntimeError("Refusing cleanup: resource ownership does not match this run")
+    run(["docker", kind, "rm", *(["-f", "-v"] if kind == "container" else []), resource])
+
+
+class OwnedResources:
+    """Journal of created resources: immutable IDs plus intended names for recovery."""
+
+    def __init__(self, run, owner):
+        self.run, self.owner = run, owner
+        self.ids = {kind: [] for kind in KINDS}
+        self.intended = {kind: set() for kind in KINDS}
+
+    def create(self, kind, suffix, *extra):
+        name = f"{self.owner}-{suffix}"
+        self.intended[kind].add(name)  # journaled first: an uncertain create stays recoverable
+        label = f"{LABEL_KEY}={self.owner}"
+        if kind == "container":
+            args = ["docker", "container", "create", "--pull=never", "--name", name,
+                    "--label", label, *extra]
+        else:
+            args = ["docker", "network", "create", "--label", label, *extra, name]
+        identifier = self.run(args)
+        if not ID_PATTERN.fullmatch(identifier):
+            raise RuntimeError(f"Uncertain {kind} identifier; left for label+name recovery")
+        self.ids[kind].append(identifier)
+        return identifier
+
+    def cleanup(self):
+        errors = []
+        for kind in KINDS:
+            if not self.intended[kind]:
+                continue
+            try:
+                recovered = recover_owned(self.run, kind, self.owner, self.intended[kind])
+                for identifier in dict.fromkeys([*self.ids[kind], *recovered]):
+                    remove_owned(self.run, identifier, kind, self.owner)
+                if recover_owned(self.run, kind, self.owner, self.intended[kind]):
+                    raise RuntimeError("owned resources remain")
+            except RuntimeError as error:
+                errors.append(f"{kind}: {error}")
+        return errors
 
 
 class FakeHandler(BaseHTTPRequestHandler):
@@ -99,11 +208,20 @@ class FakeHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
 
+def start_fake_upstream():
+    """Loopback-only listener; containers reach it through host.docker.internal."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHandler)
+    server.daemon_threads = True
+    server.records = queue.Queue()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
 class Harness:
     def __init__(self, config):
         self.config = config
         self.servers = []
-        self.containers = []
+        self.resources = None
         self.checks = 0
 
     def check(self, condition, message):
@@ -114,13 +232,14 @@ class Harness:
     def __enter__(self):
         self.stack = contextlib.ExitStack()
         try:
-            docker("image", "inspect", IMAGE)
-            for _ in range(3):
-                server = ThreadingHTTPServer(("0.0.0.0", 0), FakeHandler)
-                server.daemon_threads = True
-                server.records = queue.Queue()
-                self.servers.append(server)
-                threading.Thread(target=server.serve_forever, daemon=True).start()
+            docker_config = self.stack.enter_context(
+                tempfile.TemporaryDirectory(prefix="gateway-docker-config-"))
+            env = child_env(os.environ, {
+                "DOCKER_CONFIG": docker_config, "DOCKER_HOST": DOCKER_HOST,
+                "HOME": docker_config, "USERPROFILE": docker_config})
+            self.run = make_runner(env)
+            self.run(["docker", "image", "inspect", IMAGE])
+            self.servers = [start_fake_upstream() for _ in range(3)]
             self.temp = Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix=".gateway-test-", dir=ROOT)))
             text = self.config.read_text(encoding="utf-8")
             for port, server in zip((8081, 3001, 8001), self.servers):
@@ -130,19 +249,20 @@ class Harness:
             (self.temp / "nginx.conf").write_text(
                 "events {}\nhttp { access_log off; include /test/gateway.conf; }\n",
                 encoding="utf-8")
-            self.common = ["--pull=never", "--add-host=host.docker.internal:host-gateway",
-                           "--mount", f"type=bind,src={self.temp},dst=/test,readonly"]
-            name = "erp-gateway-check-" + uuid.uuid4().hex
-            self.containers.append(name)
-            output = docker("run", "--name", name, *self.common, IMAGE,
-                            "nginx", "-t", "-c", "/test/nginx.conf")
+            self.resources = OwnedResources(self.run, "gateway-test-" + uuid.uuid4().hex)
+            network = self.resources.create("network", "net")
+            common = ["--network", network,
+                      "--mount", f"type=bind,src={self.temp},dst=/test,readonly"]
+            checker = self.resources.create("container", "check", *common, IMAGE,
+                                            "nginx", "-t", "-c", "/test/nginx.conf")
+            self.run(["docker", "container", "start", "-a", checker])
+            exit_code = self.run(["docker", "inspect", "--format", "{{.State.ExitCode}}", checker])
+            self.check(exit_code == "0", f"nginx -t falló: {exit_code}")
             print("PASS nginx -t (real container)")
-            self.name = "erp-gateway-test-" + uuid.uuid4().hex
-            self.containers.append(self.name)
-            docker("run", "-d", "--name", self.name, *self.common,
-                   "-p", "127.0.0.1::80", IMAGE,
-                   "nginx", "-g", "daemon off;", "-c", "/test/nginx.conf")
-            binding = json.loads(docker("inspect", self.name))[0]["NetworkSettings"]["Ports"]["80/tcp"][0]
+            server = self.resources.create("container", "server", *common, "-p", "127.0.0.1::80", IMAGE,
+                                           "nginx", "-g", "daemon off;", "-c", "/test/nginx.conf")
+            self.run(["docker", "container", "start", server])
+            binding = json.loads(self.run(["docker", "inspect", server]))[0]["NetworkSettings"]["Ports"]["80/tcp"][0]
             self.port = int(binding["HostPort"])
             for _ in range(50):
                 try:
@@ -156,12 +276,7 @@ class Harness:
             raise
 
     def __exit__(self, *_):
-        errors = []
-        for name in reversed(self.containers):
-            try:
-                docker("rm", "-f", name)
-            except RuntimeError as error:
-                errors.append(str(error))
+        errors = self.resources.cleanup() if self.resources else []
         for server in self.servers:
             server.shutdown()
             server.server_close()
@@ -177,6 +292,14 @@ class Harness:
             return response.status, response.getheaders(), response.read()
         finally:
             connection.close()
+
+    def upstream_calls(self, index=0):
+        calls = []
+        while True:
+            try:
+                calls.append(self.servers[index].records.get_nowait())
+            except queue.Empty:
+                return calls
 
     def route(self, public, internal, index=0, method="POST", strip_dev=True):
         body = b'{"query":"synthetic","bytes":"preserved"}'
@@ -233,6 +356,7 @@ class Harness:
                        f"{kind}: Content-Disposition")
             self.servers[0].records.get(timeout=2)
         self.cors()
+        self.local_browser_profile()
         for status in (401, 403, 500):
             result = self.request("POST", "/api/erp/graphql", headers={"X-Test-Status": str(status), "Origin": ORIGIN})
             self.check(result[0] == status and result[2] == b'{"simulated":true}', f"error {status} alterado")
@@ -296,6 +420,69 @@ class Harness:
                    "origen no permitido obtuvo cabeceras CORS")
         self.servers[0].records.get(timeout=2)
         print("PASS CORS: allowlist/preflight/errores/sin duplicados")
+
+    def preflight(self, path, origin, method="POST", requested=", ".join(ALLOWED)):
+        headers = {"Origin": origin, "Access-Control-Request-Method": method}
+        if requested is not None:
+            headers["Access-Control-Request-Headers"] = requested
+        status, response, _ = self.request("OPTIONS", path, headers=headers)
+        return status, [(k.lower(), v) for k, v in response]
+
+    def authorized_cors(self, path, origin, method, requested, payload=None):
+        """Valid preflight plus actual request on a route that allows this origin."""
+        status, headers = self.preflight(path, origin, method, requested)
+        values = dict(headers)
+        self.check(status == 204, f"{origin} {path}: preflight {status}")
+        self.check([v for k, v in headers if k == "access-control-allow-origin"] == [origin],
+                   f"{origin} {path}: ACAO preflight")
+        self.check("access-control-allow-credentials" not in values, f"{origin} {path}: credenciales")
+        self.check(values.get("access-control-allow-methods") == "GET, POST, DELETE, OPTIONS", "métodos")
+        self.check("origin" in values.get("vary", "").lower(), f"{origin} {path}: Vary")
+        self.check(not self.upstream_calls(), f"{origin} {path}: preflight alcanzó upstream")
+        status, headers, data = self.request(method, path, headers={"Origin": origin})
+        values = dict(headers)
+        self.check(status == 200, f"{origin} {path}: actual {status}")
+        self.check([v for k, v in headers if k.lower() == "access-control-allow-origin"] == [origin],
+                   f"{origin} {path}: ACAO duplicado/ausente")
+        self.check("access-control-allow-credentials" not in {k.lower() for k in values},
+                   f"{origin} {path}: credenciales")
+        self.check({k.lower(): v for k, v in headers}.get("access-control-expose-headers") == EXPOSED,
+                   f"{origin} {path}: expose")
+        self.check("Content-Disposition" in EXPOSED, "Content-Disposition no expuesto")
+        if payload is not None:
+            self.check(data == payload, f"{origin} {path}: bytes alterados")
+            self.check(values.get("Content-Disposition", "").startswith("attachment; filename="),
+                       f"{origin} {path}: Content-Disposition")
+        self.check(len(self.upstream_calls()) == 1, f"{origin} {path}: llamadas upstream")
+
+    def local_browser_profile(self):
+        for origin in (ORIGIN, ORIGIN_LOCAL):
+            self.authorized_cors("/api/erp/graphql", origin, "POST", ", ".join(ALLOWED))
+            self.authorized_cors("/api/v1/reports/export/r/pdf", origin, "GET", "Authorization, Accept", PDF)
+            self.authorized_cors("/api/v1/reports/export/r/xlsx", origin, "GET", None, XLSX)
+        for origin in ("null", "https://evil.invalid", "http://localhost:4200/", "https://localhost:4200",
+                       "http://localhost:42000", "http://localhost:4200.evil.invalid",
+                       "http://127.0.0.1:4200", "http://localhost:4202"):
+            for path in ("/api/erp/graphql", "/api/v1/reports/export/r/pdf"):
+                status, headers = self.preflight(path, origin)
+                self.check(status == 403 and not any(k.startswith("access-control-allow") for k, _ in headers),
+                           f"{origin} {path}: preflight ajeno {status}")
+                status, headers, _ = self.request("POST", path, headers={"Origin": origin})
+                self.check(not any(k.lower().startswith("access-control-") for k, _ in headers),
+                           f"{origin} {path}: actual ajeno autorizado")
+                self.check(len(self.upstream_calls()) == 1, f"{origin} {path}: llamadas upstream")
+        # 4200 is never authorized outside the two scoped surfaces, however the path is spelled.
+        for path in UNSCOPED_FOR_4200:
+            status, headers = self.preflight(path, ORIGIN_LOCAL)
+            self.check(status != 204 and not any(k.startswith("access-control-") and k != "vary" for k, _ in headers),
+                       f"4200 {path}: preflight autorizado ({status})")
+            self.check(not self.upstream_calls(), f"4200 {path}: preflight alcanzó upstream")
+            for method in ("POST", "GET"):
+                _, headers, _ = self.request(method, path, headers={"Origin": ORIGIN_LOCAL})
+                self.check(not any(k.lower().startswith("access-control-") for k, _ in headers),
+                           f"4200 {path}: {method} autorizado")
+                self.upstream_calls()
+        print("PASS CORS 4200: solo GraphQL/export, 4201 intacto, rutas normalizadas sin autorización")
 
 
 def main():
