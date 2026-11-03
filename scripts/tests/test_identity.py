@@ -83,6 +83,13 @@ class ErpIdentityTests(unittest.TestCase):
         self.assertNotIn("revokeRefreshToken", load_realm("realm-config.example.json"))
         self.assertNotIn("refreshTokenMaxReuse", load_realm("realm-config.example.json"))
 
+    def test_access_token_carries_subject_through_basic_scope(self):
+        # Keycloak 25+ adds sub/auth_time to access tokens only via the 'basic' scope;
+        # an explicit scope list without it yields user tokens without 'sub'.
+        client = self.realm["clients"][0]
+        self.assertIn("basic", client["defaultClientScopes"])
+        self.assertIn("`basic`", (ROOT / "identity/keycloak/README.md").read_text(encoding="utf-8"))
+
     def test_roles_and_audience_are_in_access_tokens(self):
         client = self.realm["clients"][0]
         self.assertIn("profile", client["defaultClientScopes"])

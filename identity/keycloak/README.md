@@ -49,6 +49,12 @@ administrativa autorizada; esta plantilla no incluye usuarios, contraseñas ni s
 direct access grants ni service account. Solo permite los orígenes
 `http://localhost:4201` y `http://localhost:4200`; no usa `*` ni `+` para web origins. Los scopes estándar
 `profile` y `roles` aportan `preferred_username` y `realm_access.roles` en Keycloak.
+El scope `basic` es obligatorio: desde Keycloak 25 es el único que agrega `sub` y
+`auth_time` al access token de un usuario. Si un cliente importado declara una lista
+explícita de scopes sin `basic`, el access token sale sin `sub` y tanto el shell
+(que exige el mismo `sub` en ID y access token) como los backends (identidad
+canónica por sujeto) lo rechazan. Las cuentas de servicio reciben `sub` siempre,
+por eso las pruebas con service accounts no detectan su ausencia.
 Los mappers del cliente integrado `mf-erp` agregan las audiencias de recurso
 `ms-erp`, `ms2-clinico-ia` y `ms3-agenda-stock` **solo al access token**, no al
 ID token ni a userinfo. Se conserva `ms-erp`; los otros dos recursos permiten
