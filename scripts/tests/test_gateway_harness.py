@@ -83,6 +83,30 @@ class HarnessGuardTests(unittest.TestCase):
         for leaked in ("AWS_SECRET_ACCESS_KEY", "HTTP_PROXY"):
             self.assertNotIn(leaked, env)
 
+    def test_docker_endpoint_follows_platform_without_private_config(self):
+        class StopBeforeDocker(RuntimeError):
+            pass
+
+        cases = [("linux", None), ("darwin", None),
+                 ("linux", "unix:///run/user/1000/docker.sock"),
+                 ("win32", "unix:///ignored.sock")]
+        for platform, endpoint in cases:
+            with self.subTest(platform=platform, endpoint=endpoint):
+                source = {"PATH": "p", "DOCKER_CONFIG": "private"}
+                if endpoint:
+                    source["DOCKER_HOST"] = endpoint
+                with mock.patch.dict(self.mod.os.environ, source, clear=True), \
+                     mock.patch.object(self.mod.sys, "platform", platform), \
+                     mock.patch.object(self.mod, "make_runner") as runner:
+                    runner.return_value.side_effect = StopBeforeDocker()
+                    with self.assertRaises(StopBeforeDocker):
+                        with self.mod.Harness(SCRIPT):
+                            pass
+                    env = runner.call_args.args[0]
+                expected = self.mod.DOCKER_HOST if platform == "win32" else endpoint
+                self.assertEqual(env.get("DOCKER_HOST"), expected)
+                self.assertNotEqual(env["DOCKER_CONFIG"], "private")
+
     def test_docker_runner_always_bounds_time_and_uses_given_env(self):
         env = {"DOCKER_CONFIG": "empty"}
         done = subprocess.CompletedProcess([], 0, stdout="ok\n", stderr="")

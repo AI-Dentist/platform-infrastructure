@@ -234,9 +234,13 @@ class Harness:
         try:
             docker_config = self.stack.enter_context(
                 tempfile.TemporaryDirectory(prefix="gateway-docker-config-"))
-            env = child_env(os.environ, {
-                "DOCKER_CONFIG": docker_config, "DOCKER_HOST": DOCKER_HOST,
-                "HOME": docker_config, "USERPROFILE": docker_config})
+            overrides = {"DOCKER_CONFIG": docker_config,
+                         "HOME": docker_config, "USERPROFILE": docker_config}
+            if sys.platform == "win32":
+                overrides["DOCKER_HOST"] = DOCKER_HOST
+            elif os.environ.get("DOCKER_HOST"):
+                overrides["DOCKER_HOST"] = os.environ["DOCKER_HOST"]
+            env = child_env(os.environ, overrides)
             self.run = make_runner(env)
             self.run(["docker", "image", "inspect", IMAGE])
             self.servers = [start_fake_upstream() for _ in range(3)]

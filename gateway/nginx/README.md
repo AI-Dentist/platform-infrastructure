@@ -67,8 +67,10 @@ loopback** y usa `--pull=never`.
   `host.docker.internal`. Nunca `0.0.0.0`.
 - Toda llamada `docker` tiene timeout. El entorno hijo es una lista permitida
   (PATH, SYSTEMROOT, etc.) con un `DOCKER_CONFIG` vacío y temporal y
-  `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine` (Docker Desktop, motor
-  Linux). No lee configuración privada de Docker.
+  en Windows `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine` (Docker
+  Desktop, motor Linux). En Linux/macOS conserva un `DOCKER_HOST` explícito;
+  si no está configurado, usa el socket predeterminado de Docker. No lee
+  configuración privada de Docker.
 - La red y los contenedores llevan la etiqueta única `gentle.gateway.test.run=<id>`,
   se registran por ID inmutable justo tras crearse y la limpieza solo elimina
   recursos cuya etiqueta coincide (rechaza ajenos). Una creación incierta se
