@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import queue
 import re
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -208,9 +209,20 @@ class FakeHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
 
-def start_fake_upstream():
-    """Loopback-only listener; containers reach it through host.docker.internal."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHandler)
+def start_fake_upstream(socket_path=None):
+    """Desktop loopback TCP by default; private Unix HTTP on native Linux."""
+    if socket_path is None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHandler)
+    else:
+        factory = getattr(socketserver, "ThreadingUnixStreamServer", None)
+        if factory is None:
+            raise RuntimeError("Unix HTTP fixtures unavailable on this platform")
+        server = factory(str(socket_path), FakeHandler)
+        try:
+            os.chmod(socket_path, 0o666)  # connectable only inside the private outer directory
+        except BaseException:
+            server.server_close()
+            raise
     server.daemon_threads = True
     server.records = queue.Queue()
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -243,12 +255,30 @@ class Harness:
             env = child_env(os.environ, overrides)
             self.run = make_runner(env)
             self.run(["docker", "image", "inspect", IMAGE])
-            self.servers = [start_fake_upstream() for _ in range(3)]
+            native_linux = False
+            if sys.platform == "linux":
+                engine = self.run(["docker", "info", "--format", "{{.OperatingSystem}}"])
+                native_linux = "docker desktop" not in engine.lower()
+                if native_linux and not overrides.get("DOCKER_HOST", "unix://").startswith("unix://"):
+                    raise RuntimeError("Native Linux fixtures require a local Unix Docker endpoint")
+            fixtures = None
+            if native_linux:
+                outer = Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix="gw-", dir="/tmp")))
+                os.chmod(outer, 0o700)
+                fixtures = outer / "fixtures"
+                fixtures.mkdir(mode=0o755)
+                os.chmod(fixtures, 0o755)
+            for name in ("erp", "ms2", "ms3"):
+                server = start_fake_upstream(fixtures / f"{name}.sock") if fixtures else start_fake_upstream()
+                self.servers.append(server)  # retain each fixture even if the next creation fails
             self.temp = Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix=".gateway-test-", dir=ROOT)))
             text = self.config.read_text(encoding="utf-8")
-            for port, server in zip((8081, 3001, 8001), self.servers):
-                text = text.replace(f"127.0.0.1:{port}",
-                                    f"host.docker.internal:{server.server_port}")
+            for name, port, server in zip(("erp", "ms2", "ms3"), (8081, 3001, 8001), self.servers):
+                if fixtures:
+                    endpoint = f"unix:/fixtures/{name}.sock" + (":" if name != "erp" else "")
+                else:
+                    endpoint = f"host.docker.internal:{server.server_port}"
+                text = text.replace(f"127.0.0.1:{port}", endpoint)
             (self.temp / "gateway.conf").write_text(text, encoding="utf-8")
             (self.temp / "nginx.conf").write_text(
                 "events {}\nhttp { access_log off; include /test/gateway.conf; }\n",
@@ -257,6 +287,8 @@ class Harness:
             network = self.resources.create("network", "net")
             common = ["--network", network,
                       "--mount", f"type=bind,src={self.temp},dst=/test,readonly"]
+            if fixtures:
+                common += ["--mount", f"type=bind,src={fixtures},dst=/fixtures,readonly"]
             checker = self.resources.create("container", "check", *common, IMAGE,
                                             "nginx", "-t", "-c", "/test/nginx.conf")
             self.run(["docker", "container", "start", "-a", checker])

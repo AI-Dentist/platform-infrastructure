@@ -63,8 +63,17 @@ loopback** y usa `--pull=never`.
 
 ### Seguridad del runner
 
-- Los falsos upstreams escuchan solo en `127.0.0.1` y el contenedor los alcanza por
-  `host.docker.internal`. Nunca `0.0.0.0`.
+- Docker Desktop conserva fixtures TCP en `127.0.0.1` vía
+  `host.docker.internal`. En Linux nativo el runner detecta el motor y usa HTTP
+  sobre sockets Unix: directorio temporal exterior `0700`, interior `0755`,
+  sockets conectables `0666` dentro de esa frontera privada. Solo el interior se
+  monta en `/fixtures` de ambos contenedores, en modo solo lectura. No modifica
+  permisos existentes ni usa listeners wildcard, host networking o host-gateway.
+  Linux nativo requiere un endpoint Docker Unix local; topologías remotas se
+  rechazan. La copia generada usa `server unix:...;` para ERP y
+  `proxy_pass http://unix:...:;` sin URI para MS2/MS3; producción no cambia.
+  La limpieza retira contenedores antes de cerrar fixtures y temporales.
+  Los guards sin Docker no sustituyen la prueba contenedor→fixture en Linux.
 - Toda llamada `docker` tiene timeout. El entorno hijo es una lista permitida
   (PATH, SYSTEMROOT, etc.) con un `DOCKER_CONFIG` vacío y temporal y
   en Windows `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine` (Docker
