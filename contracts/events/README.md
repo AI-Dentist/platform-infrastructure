@@ -35,6 +35,26 @@ El schema no fija versión UUID, no prohíbe propiedades adicionales y no invent
 
 Ejemplo de forma, con IDs sintéticos: no garantiza referencias válidas ni autoriza publicación. Los fallos del listener se rechazan sin requeue infinito, hacia la DLQ configurada; esto no implementa recuperación automática.
 
+## Facturación rechazada: ERP → MS2 (compensación)
+
+Compensación del flujo anterior. Cuando el ERP no puede facturar una consulta finalizada de forma definitiva, publica `facturacion.consulta.rechazada` en `dental.topic.exchange` desde un outbox transaccional, y MS2 revierte el cierre de esa consulta de `COMPLETADA` a `EN_CURSO` con el motivo visible. No se borra información clínica. [Schema](facturacion-consulta-rechazada.schema.json).
+
+| Campo | Regla |
+|---|---|
+| `eventId` | UUID del evento de compensación; clave de deduplicación en MS2. |
+| `consultaId` | UUID de la consulta cuyo cierre se revierte. |
+| `consultaFinalizadaEventId` | `eventId` (y `messageId` AMQP) del `clinica.consulta.finalizada` rechazado. MS2 revierte solo si sigue siendo el cierre vigente; un cierre posterior no se revierte. |
+| `motivoCodigo` | `PACIENTE_INEXISTENTE`, `ODONTOLOGO_INEXISTENTE`, `SERVICIO_INEXISTENTE`, `SERVICIO_INACTIVO`, `MONTO_INVALIDO`, `PAYLOAD_INVALIDO` o `REINTENTOS_AGOTADOS`. |
+| `motivo` | Texto para el odontólogo, 1 a 500 caracteres, sin datos personales. |
+| `rechazadaEn` | Fecha y hora ISO 8601 del rechazo. |
+
+Reglas de la saga:
+
+- Los errores transitorios del ERP (base de datos, broker o red) se reintentan con backoff exponencial acotado; nunca compensan en el primer intento. Agotados los reintentos, el ERP publica la compensación con `REINTENTOS_AGOTADOS`.
+- Un rechazo de negocio definitivo compensa sin reintentar.
+- La compensación es idempotente: el mismo `eventId` entregado dos veces revierte una sola vez. MS2 la consume desde `ms2.facturacion.consulta.rechazada.queue`, con DLQ `ms2.facturacion.consulta.rechazada.dlq` solo para mensajes ilegibles.
+- La DLQ `erp.consulta.finalizada.dlq` queda solo para mensajes ilegibles (*poison*); no es un destino de rechazos de negocio.
+
 ## Catálogo: ERP → consumidores por acordar
 
 `RabbitMQCatalogEventPublisher` serializa los componentes de los records directamente en el outbox. `routingKey()` es un método, no un campo JSON. Los seis eventos usan `dental.topic.exchange`:

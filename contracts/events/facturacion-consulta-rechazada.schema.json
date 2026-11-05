@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "facturacion.consulta.rechazada — compensation from the ERP to MS2",
+  "description": "Published by the ERP through a transactional outbox when it definitively cannot bill a finished consultation. MS2 reverts that closure (COMPLETADA -> EN_CURSO) only if consultaFinalizadaEventId still identifies the current closure. See README.md.",
+  "type": "object",
+  "required": ["eventId", "consultaId", "consultaFinalizadaEventId", "motivoCodigo", "motivo", "rechazadaEn"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "consultaId": {"type": "string", "format": "uuid"},
+    "consultaFinalizadaEventId": {"type": "string", "format": "uuid"},
+    "motivoCodigo": {
+      "enum": ["PACIENTE_INEXISTENTE", "ODONTOLOGO_INEXISTENTE", "SERVICIO_INEXISTENTE", "SERVICIO_INACTIVO",
+               "MONTO_INVALIDO", "PAYLOAD_INVALIDO", "REINTENTOS_AGOTADOS"]
+    },
+    "motivo": {"type": "string", "minLength": 1, "maxLength": 500},
+    "rechazadaEn": {"type": "string", "format": "date-time"}
+  }
+}
