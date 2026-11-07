@@ -1,7 +1,7 @@
 # Convenciones de Contratos, Integración y Arquitectura de APIs
 
 Este documento define los estándares arquitectónicos obligatorios para la comunicación síncrona entre clientes (microfrontends / frontend web), el API Gateway (Nginx) y los microservicios del sistema médico-odontológico:
-- **MS1 - ERP/Finanzas** (Spring Boot + PostgreSQL - Dennis): [GraphQL publicado](graphql/README.md). La propuesta REST de seguridad no está implementada por ms-erp; login corresponde a Keycloak.
+- **MS1 - ERP/Finanzas** (Spring Boot + PostgreSQL - Dennis): [GraphQL efectivo](graphql/README.md), con revisión local verificada y disponibilidad indicada en `graphql/source.json`. La propuesta REST de seguridad no está implementada por ms-erp; login corresponde a Keycloak.
 - **MS2 - Expediente Clínico Odontológico e IA** (NestJS + MongoDB - Henry): API REST.
 - **MS3 - Agendamiento, Citas y Stock** (Laravel + DynamoDB - Wendy): API REST.
 
@@ -9,12 +9,15 @@ Este documento define los estándares arquitectónicos obligatorios para la comu
 
 ## Estado y alcance
 
-El contrato efectivo ERP está en [graphql/README.md](graphql/README.md), con SDL completo, fuente
-publicada y hashes (incluida la referencia a la introspección completa). Las convenciones históricas siguientes de MS2/MS3 se conservan
-sin afirmar que sus implementaciones estén verificadas. No se imponen al ERP:
-este usa UUID sin exigir versión 4, `Idempotency-Key` HTTP sin input GraphQL y no
-promete trazabilidad distribuida por `X-Correlation-ID` ni errores RFC 7807 en toda
-su superficie. Las operaciones de facturas/liquidaciones anteriores eran propuestas.
+El contrato efectivo ERP está en [graphql/README.md](graphql/README.md), con SDL completo,
+fuente publicada y hashes. Para MS2/MS3 consultar primero el [mapa REST de integración](rest/README.md):
+los YAML históricos son **propuestas**, no exports de los backends, y no deben generar
+clientes suponiendo que todos sus endpoints, DTO, IDs o errores estén implementados.
+
+Las convenciones históricas siguientes se conservan como propuestas, no como garantías
+transversales. ERP usa UUID sin exigir versión 4, `Idempotency-Key` HTTP sin input
+GraphQL y no promete `X-Correlation-ID` ni errores RFC 7807 en toda su superficie.
+Las operaciones antiguas de facturas/liquidaciones también eran propuestas.
 
 ## 1. Convención Unificada de Identificadores (propuesta histórica MS2/MS3)
 
@@ -138,8 +141,8 @@ En GraphQL, las peticiones HTTP retornan casi siempre `200 OK` a nivel de transp
 
 | Archivo | Protocolo | Microservicio | Responsable | Estado |
 |---|---|---|---|---|
-| [contracts/rest/ms1-seguridad.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms1-seguridad.yaml) | REST (OpenAPI 3.0) | MS1 Seguridad | Dennis | Obsoleto, no implementado por ms-erp |
-| [contracts/rest/ms2-clinico.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms2-clinico.yaml) | REST (OpenAPI 3.0) | MS2 Expediente Clínico e IA | Henry | Propuesta ampliada |
-| [contracts/rest/ms3-agendamiento.yaml](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/rest/ms3-agendamiento.yaml) | REST (OpenAPI 3.0) | MS3 Agendamiento y Stock | Wendy | Propuesta ampliada |
-| [contracts/graphql/ms1-erp.graphql](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/ms1-erp.graphql) | GraphQL SDL | MS1 ERP / Finanzas | Dennis | Copia canónica publicada; ver graphql/source.json |
-| [contracts/graphql/README.md](file:///c:/2-2026/sw2/p2/platform-infrastructure/contracts/graphql/README.md) | Documentación | Guía GraphQL vs REST | Dennis / Equipo | Guía de arquitectura |
+| [rest/ms1-seguridad.yaml](rest/ms1-seguridad.yaml) | REST (OpenAPI 3.0) | MS1 Seguridad | Dennis | Obsoleto, no implementado por ms-erp |
+| [rest/ms2-clinico.yaml](rest/ms2-clinico.yaml) | REST (OpenAPI 3.0) | MS2 Expediente Clínico e IA | Henry | Propuesta ampliada |
+| [rest/ms3-agendamiento.yaml](rest/ms3-agendamiento.yaml) | REST (OpenAPI 3.0) | MS3 Agendamiento y Stock | Wendy | Propuesta ampliada |
+| [graphql/ms1-erp.graphql](graphql/ms1-erp.graphql) | GraphQL SDL | MS1 ERP / Finanzas | Dennis | Copia canónica verificada localmente, no nueva publicación remota; ver graphql/source.json |
+| [graphql/README.md](graphql/README.md) | Documentación | Guía GraphQL vs REST | Dennis / Equipo | Guía de arquitectura |

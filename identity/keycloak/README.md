@@ -35,18 +35,44 @@ administrativa autorizada; esta plantilla no incluye usuarios, contraseñas ni s
 2. Configurar el frontend con issuer
    `http://localhost:8180/realms/dental-platform`, cliente `mf-erp`,
    `response_type=code`, `scope=openid profile` y PKCE **S256** obligatorio.
-   Redirect y logout: `http://localhost:4201/` (rutas bajo ese origen).
+   Redirect y logout: `http://localhost:4201/` (rutas bajo ese origen). El
+   perfil del navegador local `http://localhost:4200` registra solo valores
+   exactos, sin comodines: redirect `http://localhost:4200/auth/callback`,
+   web origin `http://localhost:4200` y post-logout `http://localhost:4200/`.
+   Los valores 4201 existentes se conservan.
 3. Enviar el **access token**, no el ID token, como `Authorization: Bearer <token>`
    al ERP detrás del Gateway. No usar password grant ni `X-Dev-User` para integrar.
 4. Fijar `ERP_PORT=8081` y la variable de issuer correspondiente al modo de abajo.
    Verificar discovery, JWKS y JWT antes de declarar funcional la integración.
 
 `mf-erp` es público, sin secreto, con authorization code y sin flujo implícito,
-direct access grants ni service account. Solo permite origen
-`http://localhost:4201`; no usa `*` ni `+` para web origins. Los scopes estándar
+direct access grants ni service account. Solo permite los orígenes
+`http://localhost:4201` y `http://localhost:4200`; no usa `*` ni `+` para web origins. Los scopes estándar
 `profile` y `roles` aportan `preferred_username` y `realm_access.roles` en Keycloak.
-El mapper agrega audiencia `ms-erp` al access token, no al ID token. La plantilla
-no incorpora el cliente de password grant para pruebas del backend.
+El scope `basic` es obligatorio: desde Keycloak 25 es el único que agrega `sub` y
+`auth_time` al access token de un usuario. Si un cliente importado declara una lista
+explícita de scopes sin `basic`, el access token sale sin `sub` y tanto el shell
+(que exige el mismo `sub` en ID y access token) como los backends (identidad
+canónica por sujeto) lo rechazan. Las cuentas de servicio reciben `sub` siempre,
+por eso las pruebas con service accounts no detectan su ausencia.
+Los mappers del cliente integrado `mf-erp` agregan las audiencias de recurso
+`ms-erp`, `ms2-clinico-ia` y `ms3-agenda-stock` **solo al access token**, no al
+ID token ni a userinfo. Se conserva `ms-erp`; los otros dos recursos permiten
+preparar el contrato de un token de usuario reenviado al backend de destino.
+La plantilla no incorpora el cliente de password grant para pruebas del backend.
+
+### Registro 4200 y rotación de refresh tokens
+
+- `post.logout.redirect.uris` es un atributo multivalor: Keycloak 26.8.1 separa los
+  valores con el delimitador `##` (`Constants.CFG_DELIMITER`), no con coma ni
+  espacio. Valor actual: `http://localhost:4201/*##http://localhost:4200/`.
+- A nivel de realm se fijan `revokeRefreshToken: true` (Boolean) y
+  `refreshTokenMaxReuse: 0` (Integer): cada refresh token es de un solo uso.
+  Aplica a todos los clientes de `dental-platform`; el realm legacy no cambia.
+- **Configuración estática no demuestra rotación en vivo.** Que el JSON declare
+  estos campos no prueba que una instancia importada los aplique ni que un
+  refresh reutilizado sea rechazado; esa prueba real (importación, login PKCE,
+  refresh, reutilización) pertenece a T10.
 
 ## 3. Variables reales y conectividad
 
@@ -92,10 +118,46 @@ seguridad para hacer pasar pruebas. Un Bearer inválido no debe caer en ese head
 
 ## 4. Límites y verificación pendiente
 
-El backend publicado **no valida la audiencia**. Emitir `aud: ms-erp` prepara el
-contrato, pero no garantiza aislamiento frente a tokens de otros clientes del
-mismo realm. Corregir ese límite requiere un cambio backend autorizado, fuera de
-esta unidad; no se debe presentar el mapper como enforcement del receptor.
+### Contrato esperado de los receptores
+
+Cada backend debe validar firma, expiración, issuer exacto y su propia audiencia
+de recurso antes de ejecutar operaciones. El issuer integrado esperado es
+`http://localhost:8180/realms/dental-platform` en este ejemplo local; en otro
+entorno debe sustituirse de forma coherente con discovery y el claim `iss`.
+La audiencia esperada no es el nombre del realm ni el cliente `mf-erp`.
+
+| Receptor | Configuración de issuer | Audiencia esperada |
+|---|---|---|
+| ms-erp | `KEYCLOAK_ISSUER_URI` o `ERP_LOCAL_JWT_ISSUER_URI`, según la cadena activa | `ms-erp` |
+| ms2-clinico-ia | `KEYCLOAK_URL` sin barra final + `/realms/` + `KEYCLOAK_REALM` | `KEYCLOAK_AUDIENCE=ms2-clinico-ia` |
+| ms3-agenda-stock | `KEYCLOAK_BASE_URL` sin barra final + `/realms/` + `KEYCLOAK_REALM` | `KEYCLOAK_AUDIENCE=ms3-agenda-stock` |
+
+Para MS2/MS3, configurar la URL base pública del ejemplo como
+`http://localhost:8180` y `KEYCLOAK_REALM=dental-platform`. Estas variables deben
+resolver al mismo issuer exacto, no a una dirección interna distinta. El contrato
+requiere aceptar `aud` como string igual al recurso esperado o como array que lo
+contenga exactamente; rechazar claims ausentes o incorrectos, sin bypass.
+Al reenviar un token de usuario, debe estar incluida la audiencia del destino;
+esto no sustituye la autorización por roles ni los vínculos de identidad de BD.
+
+### Estado de enforcement y alcance de esta unidad
+
+El snapshot ERP publicado referenciado por el contrato GraphQL **no valida la audiencia**.
+Las validaciones de issuer/audiencia de los tres receptores fueron implementadas
+y verificadas en unidades backend separadas; eso no acredita su publicación ni
+su despliegue. Verificar la versión realmente ejecutada antes de usar este perfil.
+
+En una versión ERP compatible, configurar `ERP_JWT_AUDIENCE=ms-erp`
+(`erp.security.jwt.audience`), tanto para la cadena normal como para la local.
+El valor predeterminado es `ms-erp`; una configuración vacía no debe desactivar
+la validación. La audiencia debe ser un string exacto o una lista de strings que
+contenga el recurso esperado; no aceptar elementos nulos o de otro tipo.
+Esta opción no agrega enforcement a una versión anterior que la desconozca.
+
+Emitir las tres audiencias prepara el contrato, pero no garantiza aislamiento
+frente a tokens de otros clientes del mismo realm. El mapper no valida los
+receptores ni habilita SSO con `odontoclinic-realm`. No se ha importado este
+ejemplo ni probado aquí su emisión en vivo.
 
 Verificación estructural, sin red ni servicios:
 
@@ -104,7 +166,9 @@ python -m unittest discover -s scripts/tests -p test_identity.py -v
 ```
 
 Las pruebas comprueban separación de realms, preservación legacy, roles crudos,
-PKCE, flujos deshabilitados, origen explícito, mapper y ausencia de credenciales.
+PKCE, flujos deshabilitados, orígenes explícitos 4201/4200 sin comodines para 4200,
+delimitador `##`, campos de rotación, los tres mappers de audiencia
+exclusivos del access token y ausencia de credenciales.
 No demuestran una importación real ni emisión/verificación criptográfica de JWT.
 Antes de un uso compartido quedan pendientes, en entorno aislado autorizado:
 importación sin alterar el realm legacy, discovery/JWKS desde el ERP, login PKCE,

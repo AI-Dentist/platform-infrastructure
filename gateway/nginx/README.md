@@ -56,12 +56,36 @@ La fuente de verdad es el backend publicado `main`
 | Nginx y servicios en contenedores | Cambiar los tres destinos a nombres DNS reales de servicios en la misma red Docker y sus puertos internos; `127.0.0.1` es el propio contenedor Nginx |
 | Nginx contenedor, ERP en host | Usar `host.docker.internal:8081`; en Linux puede requerir el mapeo `host-gateway` |
 
-El runner usa servidores HTTP falsos en puertos efímeros del host y reemplaza
-los destinos solamente en una copia temporal `.gateway-test-*` dentro del repositorio
-(excluida de Git y eliminada al terminar). Publica Nginx en un puerto aleatorio
-**de loopback**, usa `--pull=never` y elimina sus contenedores y temporales incluso
-si falla. Los falsos upstreams escuchan en interfaces del host para permitir
-acceso desde Docker; ejecutarlo solamente en una estación de pruebas confiable.
+El runner usa servidores HTTP falsos en puertos efímeros y reemplaza los destinos
+solamente en una copia temporal `.gateway-test-*` dentro del repositorio (excluida
+de Git y eliminada al terminar). Publica Nginx en un puerto aleatorio **de
+loopback** y usa `--pull=never`.
+
+### Seguridad del runner
+
+- Docker Desktop conserva fixtures TCP en `127.0.0.1` vía
+  `host.docker.internal`. En Linux nativo el runner detecta el motor y usa HTTP
+  sobre sockets Unix: directorio temporal exterior `0700`, interior `0755`,
+  sockets conectables `0666` dentro de esa frontera privada. Solo el interior se
+  monta en `/fixtures` de ambos contenedores, en modo solo lectura. No modifica
+  permisos existentes ni usa listeners wildcard, host networking o host-gateway.
+  Linux nativo requiere un endpoint Docker Unix local; topologías remotas se
+  rechazan. La copia generada usa `server unix:...;` para ERP y
+  `proxy_pass http://unix:...:;` sin URI para MS2/MS3; producción no cambia.
+  La limpieza retira contenedores antes de cerrar fixtures y temporales.
+  Los guards sin Docker no sustituyen la prueba contenedor→fixture en Linux.
+- Toda llamada `docker` tiene timeout. El entorno hijo es una lista permitida
+  (PATH, SYSTEMROOT, etc.) con un `DOCKER_CONFIG` vacío y temporal y
+  en Windows `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine` (Docker
+  Desktop, motor Linux). En Linux/macOS conserva un `DOCKER_HOST` explícito;
+  si no está configurado, usa el socket predeterminado de Docker. No lee
+  configuración privada de Docker.
+- La red y los contenedores llevan la etiqueta única `gentle.gateway.test.run=<id>`,
+  se registran por ID inmutable justo tras crearse y la limpieza solo elimina
+  recursos cuya etiqueta coincide (rechaza ajenos). Una creación incierta se
+  recupera por etiqueta + nombre previsto. La red propia **no** se declara aislada
+  de egreso: solo se configuran peticiones al fixture del host.
+- Los guards se prueban sin Docker en `scripts/tests/test_gateway_harness.py`.
 
 ### Incluir la configuración
 
@@ -84,8 +108,14 @@ archivo: ajustar upstreams y allowlist en la configuración de cada entorno.
 
 ## Frontera CORS y autenticación
 
-- Allowlist inicial explícita: `http://localhost:4201`. Cambiar el `map` para
-  orígenes reales aprobados (esquema, host y puerto exactos); no usar `*`.
+- Allowlist explícita: `http://localhost:4201` (todas las rutas CORS) y
+  `http://localhost:4200` **solo** en `/api/erp/graphql` y el prefijo
+  `/api/v1/reports/export/`; nunca en `/mcp`, el webhook PagoFácil ni
+  `/api/seguridad/`. La decisión usa `$uri` normalizado (decodificado, sin
+  dot-segments) evaluado antes del `rewrite` a `/graphql`, de modo que rutas con
+  `..` o `%2e%2e` que normalizan a MCP no reciben autorización 4200. Cambiar el
+  `map` para orígenes reales aprobados (esquema, host y puerto exactos); no usar `*`.
+  Es un perfil local de navegador, no despliegue ni prueba de IdP/backend reales.
 - OPTIONS válido se responde localmente con 204. Origen, método o cabeceras no
   permitidos producen 403 sin autorización CORS; no alcanzan el backend.
 - Métodos permitidos: GET, POST, DELETE, OPTIONS. Cabeceras permitidas:

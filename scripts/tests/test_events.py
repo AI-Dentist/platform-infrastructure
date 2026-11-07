@@ -40,6 +40,26 @@ class EventsTest(unittest.TestCase):
         self.assertNotIn("minimum", item["properties"]["precioUnitarioBs"])
         self.assertNotIn("multipleOf", item["properties"]["precioUnitarioBs"])
 
+    def test_billing_rejection_compensation_fields(self):
+        schema = load("contracts/events/facturacion-consulta-rechazada.schema.json")
+        self.assertEqual(schema["type"], "object")
+        required = {"eventId", "consultaId", "consultaFinalizadaEventId", "motivoCodigo", "motivo", "rechazadaEn"}
+        self.assertEqual(set(schema["required"]), required)
+        self.assertEqual(set(schema["properties"]), required)
+        for field in ("eventId", "consultaId", "consultaFinalizadaEventId"):
+            self.assertEqual(schema["properties"][field], {"type": "string", "format": "uuid"})
+        self.assertEqual(schema["properties"]["rechazadaEn"], {"type": "string", "format": "date-time"})
+        self.assertEqual(schema["properties"]["motivoCodigo"]["enum"], [
+            "PACIENTE_INEXISTENTE", "ODONTOLOGO_INEXISTENTE", "SERVICIO_INEXISTENTE", "SERVICIO_INACTIVO",
+            "MONTO_INVALIDO", "PAYLOAD_INVALIDO", "REINTENTOS_AGOTADOS"])
+        self.assertEqual(schema["properties"]["motivo"], {"type": "string", "minLength": 1, "maxLength": 500})
+
+    def test_billing_rejection_documented(self):
+        doc = (ROOT / "contracts/events/README.md").read_text(encoding="utf-8")
+        for term in ("facturacion.consulta.rechazada", "consultaFinalizadaEventId", "REINTENTOS_AGOTADOS",
+                     "ms2.facturacion.consulta.rechazada.queue", "EN_CURSO", "idempotente"):
+            self.assertIn(term, doc)
+
     def test_catalog_exact_documented_shapes(self):
         doc = (ROOT / "contracts/events/README.md").read_text(encoding="utf-8")
         shapes = {
@@ -64,11 +84,17 @@ class EventsTest(unittest.TestCase):
         self.assertEqual(exchanges["dental.topic.exchange"]["type"], "topic")
         self.assertEqual(exchanges["dental.dlx.exchange"]["type"], "direct")
         queues = {q["name"]: q for q in topology["queues"]}
-        self.assertEqual(set(queues), {"erp.consulta.finalizada.queue", "erp.consulta.finalizada.dlq"})
+        self.assertEqual(set(queues), {"erp.consulta.finalizada.queue", "erp.consulta.finalizada.dlq",
+                                       "ms2.facturacion.consulta.rechazada.queue",
+                                       "ms2.facturacion.consulta.rechazada.dlq"})
         self.assertEqual(queues["erp.consulta.finalizada.queue"]["arguments"], {
             "x-dead-letter-exchange": "dental.dlx.exchange",
             "x-dead-letter-routing-key": "erp.consulta.finalizada.dlq"})
         self.assertEqual(queues["erp.consulta.finalizada.dlq"]["arguments"], {})
+        self.assertEqual(queues["ms2.facturacion.consulta.rechazada.queue"]["arguments"], {
+            "x-dead-letter-exchange": "dental.dlx.exchange",
+            "x-dead-letter-routing-key": "ms2.facturacion.consulta.rechazada.dlq"})
+        self.assertEqual(queues["ms2.facturacion.consulta.rechazada.dlq"]["arguments"], {})
         for entry in topology["exchanges"] + topology["queues"]:
             self.assertEqual(entry["vhost"], "/")
             self.assertTrue(entry["durable"])
@@ -77,7 +103,11 @@ class EventsTest(unittest.TestCase):
             {"source": "dental.topic.exchange", "vhost": "/", "destination": "erp.consulta.finalizada.queue",
              "destination_type": "queue", "routing_key": "clinica.consulta.finalizada", "arguments": {}},
             {"source": "dental.dlx.exchange", "vhost": "/", "destination": "erp.consulta.finalizada.dlq",
-             "destination_type": "queue", "routing_key": "erp.consulta.finalizada.dlq", "arguments": {}}])
+             "destination_type": "queue", "routing_key": "erp.consulta.finalizada.dlq", "arguments": {}},
+            {"source": "dental.topic.exchange", "vhost": "/", "destination": "ms2.facturacion.consulta.rechazada.queue",
+             "destination_type": "queue", "routing_key": "facturacion.consulta.rechazada", "arguments": {}},
+            {"source": "dental.dlx.exchange", "vhost": "/", "destination": "ms2.facturacion.consulta.rechazada.dlq",
+             "destination_type": "queue", "routing_key": "ms2.facturacion.consulta.rechazada.dlq", "arguments": {}}])
 
     def test_legacy_topology_preserved(self):
         topology = load("messaging/rabbitmq/topology.json")

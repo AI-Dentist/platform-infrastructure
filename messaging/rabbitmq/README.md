@@ -20,7 +20,11 @@
 | DLX durable, tipo direct | `dental.dlx.exchange` |
 | DLQ durable y clave de dead letter | `erp.consulta.finalizada.dlq` |
 
-La cola declara `x-dead-letter-exchange` y `x-dead-letter-routing-key`; la DLQ se enlaza al DLX con esa misma clave. El listener tiene `spring.rabbitmq.listener.simple.default-requeue-rejected=false`: los mensajes rechazados no se reencolan indefinidamente. No se define un binding de catálogo hacia la cola de consultas.
+| Cola de compensación (consumidor MS2) | `ms2.facturacion.consulta.rechazada.queue` |
+| Binding de compensación | `facturacion.consulta.rechazada` |
+| DLQ de compensación | `ms2.facturacion.consulta.rechazada.dlq` |
+
+La compensación de la saga de facturación está descrita en [contracts/events](../../contracts/events/README.md). La cola declara `x-dead-letter-exchange` y `x-dead-letter-routing-key`; la DLQ se enlaza al DLX con esa misma clave. El listener tiene `spring.rabbitmq.listener.simple.default-requeue-rejected=false`: los mensajes rechazados no se reencolan indefinidamente. No se define un binding de catálogo hacia la cola de consultas.
 
 ### Conexión y overrides reales
 

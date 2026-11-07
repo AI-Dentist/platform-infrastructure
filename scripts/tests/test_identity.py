@@ -62,10 +62,33 @@ class ErpIdentityTests(unittest.TestCase):
                      "serviceAccountsEnabled", "bearerOnly"):
             self.assertFalse(client[flag], flag)
         self.assertEqual(client["attributes"]["pkce.code.challenge.method"], "S256")
-        self.assertEqual(client["redirectUris"], ["http://localhost:4201/*"])
-        self.assertEqual(client["webOrigins"], ["http://localhost:4201"])
+        self.assertEqual(client["redirectUris"], [
+            "http://localhost:4201/*", "http://localhost:4200/auth/callback",
+        ])
+        self.assertEqual(client["webOrigins"], [
+            "http://localhost:4201", "http://localhost:4200",
+        ])
+        # Keycloak 26.8.1 stores multivalued client attributes with "##".
         self.assertEqual(client["attributes"]["post.logout.redirect.uris"],
-                         "http://localhost:4201/*")
+                         "http://localhost:4201/*##http://localhost:4200/")
+        for value in (client["redirectUris"] + client["webOrigins"]
+                      + client["attributes"]["post.logout.redirect.uris"].split("##")):
+            if "4200" in value:
+                self.assertNotIn("*", value)
+                self.assertNotIn("+", value)
+
+    def test_refresh_rotation_is_single_use_at_realm_level(self):
+        self.assertIs(self.realm["revokeRefreshToken"], True)
+        self.assertEqual(self.realm["refreshTokenMaxReuse"], 0)
+        self.assertNotIn("revokeRefreshToken", load_realm("realm-config.example.json"))
+        self.assertNotIn("refreshTokenMaxReuse", load_realm("realm-config.example.json"))
+
+    def test_access_token_carries_subject_through_basic_scope(self):
+        # Keycloak 25+ adds sub/auth_time to access tokens only via the 'basic' scope;
+        # an explicit scope list without it yields user tokens without 'sub'.
+        client = self.realm["clients"][0]
+        self.assertIn("basic", client["defaultClientScopes"])
+        self.assertIn("`basic`", (ROOT / "identity/keycloak/README.md").read_text(encoding="utf-8"))
 
     def test_roles_and_audience_are_in_access_tokens(self):
         client = self.realm["clients"][0]
@@ -73,13 +96,21 @@ class ErpIdentityTests(unittest.TestCase):
         self.assertIn("roles", client["defaultClientScopes"])
         mappers = client["protocolMappers"]
         audience = [m for m in mappers if m["protocolMapper"] == "oidc-audience-mapper"]
-        self.assertEqual(len(audience), 1)
-        self.assertEqual(audience[0]["protocol"], "openid-connect")
-        self.assertEqual(audience[0]["config"], {
-            "included.custom.audience": "ms-erp",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-        })
+        self.assertCountEqual(
+            [m["config"]["included.custom.audience"] for m in audience],
+            ["ms-erp", "ms2-clinico-ia", "ms3-agenda-stock"],
+        )
+        for mapper in audience:
+            resource = mapper["config"]["included.custom.audience"]
+            with self.subTest(resource=resource):
+                self.assertEqual(mapper["name"], resource + "-audience")
+                self.assertEqual(mapper["protocol"], "openid-connect")
+                self.assertEqual(mapper["config"], {
+                    "included.custom.audience": resource,
+                    "id.token.claim": "false",
+                    "access.token.claim": "true",
+                    "userinfo.token.claim": "false",
+                })
 
     def test_examples_have_no_users_or_credentials(self):
         def inspect(value):
@@ -103,6 +134,8 @@ class ErpIdentityTests(unittest.TestCase):
             "realm_access.roles", "preferred_username", "ROLE_ROLE_ADMIN",
             "http://localhost:8180/realms/dental-platform", "127.0.0.1",
             "discovery", "JWKS", "X-Dev-User", "no valida la audiencia",
+            "http://localhost:4200/auth/callback", "##", "revokeRefreshToken",
+            "refreshTokenMaxReuse", "T10",
         ):
             self.assertIn(required, text)
 

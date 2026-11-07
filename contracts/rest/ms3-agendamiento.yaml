@@ -1,4 +1,7 @@
+# Propuesta histórica, no export del backend ni prueba de rutas implementadas.
+# Consultar README.md antes de generar clientes o asumir DTO/estados.
 openapi: 3.0.3
+x-contract-status: historical-proposal
 info:
   title: MS3 - Microservicio de Agendamiento, Citas y Stock Odontológico
   description: >-
