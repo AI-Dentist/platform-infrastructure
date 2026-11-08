@@ -1,0 +1,104 @@
+{
+  "name": "ERP - Alerta de cobranza por WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "erp-cobranza",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1f0c0de-0001-4c00-9000-000000000001",
+      "name": "Webhook ERP",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "erp-cobranza"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "secret",
+              "leftValue": "={{ $json.headers['x-erp-webhook-secret'] }}",
+              "rightValue": "={{ $env.ERP_WEBHOOK_SECRET }}",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "telefono",
+              "leftValue": "={{ $json.body.telefono }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1f0c0de-0002-4c00-9000-000000000002",
+      "name": "Secreto y telefono validos",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.facebook.com/v21.0/' + $env.WHATSAPP_PHONE_NUMBER_ID + '/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.WHATSAPP_ACCESS_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $json.body.telefono, type: 'text', text: { body: 'Hola ' + $json.body.pacienteNombre + ', le recordamos su pago pendiente de Bs ' + $json.body.montoBs + ' por ' + $json.body.concepto + ' con vencimiento ' + $json.body.fechaVencimiento + '.' } }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "a1f0c0de-0003-4c00-9000-000000000003",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ enviado: true, canal: 'whatsapp' }) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "a1f0c0de-0004-4c00-9000-000000000004",
+      "name": "Responder enviado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [660, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ enviado: false, motivo: 'SOLICITUD_RECHAZADA' }) }}",
+        "options": { "responseCode": 401 }
+      },
+      "id": "a1f0c0de-0005-4c00-9000-000000000005",
+      "name": "Responder rechazado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 120]
+    }
+  ],
+  "connections": {
+    "Webhook ERP": { "main": [[{ "node": "Secreto y telefono validos", "type": "main", "index": 0 }]] },
+    "Secreto y telefono validos": {
+      "main": [
+        [{ "node": "Enviar WhatsApp", "type": "main", "index": 0 }],
+        [{ "node": "Responder rechazado", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar WhatsApp": { "main": [[{ "node": "Responder enviado", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}

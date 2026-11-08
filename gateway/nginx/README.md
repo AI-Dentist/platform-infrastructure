@@ -108,18 +108,21 @@ archivo: ajustar upstreams y allowlist en la configuración de cada entorno.
 
 ## Frontera CORS y autenticación
 
-- Allowlist explícita: `http://localhost:4201` (todas las rutas CORS) y
-  `http://localhost:4200` **solo** en `/api/erp/graphql` y el prefijo
-  `/api/v1/reports/export/`; nunca en `/mcp`, el webhook PagoFácil ni
-  `/api/seguridad/`. La decisión usa `$uri` normalizado (decodificado, sin
+- Allowlist explícita: `http://localhost:4201` y `http://localhost:5173` (todas las
+  rutas CORS); la Shell `http://localhost:4200` y los remotos `http://localhost:4202`
+  y `http://localhost:4203` **solo** en las superficies del navegador:
+  `/api/erp/graphql`, `/api/v1/reports/export` (base y prefijo), `/api/expediente/`
+  (MS2) y `/api/agendamiento/` + `/api/v1/(citas|horarios|stock)` (MS3); nunca en
+  `/mcp`, el webhook PagoFácil ni `/api/seguridad/`. La decisión usa `$uri` normalizado (decodificado, sin
   dot-segments) evaluado antes del `rewrite` a `/graphql`, de modo que rutas con
   `..` o `%2e%2e` que normalizan a MCP no reciben autorización 4200. Cambiar el
   `map` para orígenes reales aprobados (esquema, host y puerto exactos); no usar `*`.
   Es un perfil local de navegador, no despliegue ni prueba de IdP/backend reales.
 - OPTIONS válido se responde localmente con 204. Origen, método o cabeceras no
   permitidos producen 403 sin autorización CORS; no alcanzan el backend.
-- Métodos permitidos: GET, POST, DELETE, OPTIONS. Cabeceras permitidas:
-  `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`, `Mcp-Session-Id`,
+- Métodos permitidos: GET, POST, PUT, PATCH, DELETE, OPTIONS. Cabeceras permitidas:
+  `Authorization`, `Content-Type`, `Accept`, `Origin`, `X-Requested-With`,
+  `Idempotency-Key`, `Mcp-Session-Id`,
   `MCP-Protocol-Version`, `Last-Event-ID` (reanudación SSE) y `X-Correlation-ID`
   (solo transporte). Se exponen `Mcp-Session-Id`, `Content-Disposition` e
   `Idempotency-Replayed`; esto no demuestra replay ni reanudación en el backend.
@@ -139,8 +142,14 @@ archivo: ajustar upstreams y allowlist en la configuración de cada entorno.
 
 ## Streaming, descargas y límites de lo demostrado
 
-`proxy_buffering off`, caché deshabilitada y HTTP/1.1 permiten eventos SSE sin
-esperar al final. `proxy_read_timeout 300s` mide inactividad **entre lecturas**,
+`proxy_buffering off`, caché deshabilitada y HTTP/1.1 permiten eventos SSE y la
+descarga binaria de reportes (`.xlsx`/`.pdf`) sin esperar al final. Rutas de MS1
+(GraphQL/agente, export), MS2 y MS3 usan `proxy_connect_timeout 60s` y
+`proxy_read_timeout 120s` para razonamiento del agente/MCP, generación de reportes e
+inferencia; `/mcp` conserva `proxy_read_timeout 300s` porque sus streams pueden
+quedar inactivos más tiempo. `/api/expediente/` acepta cuerpos de hasta 25M
+(`client_max_body_size 25M`, radiografías e imágenes intraorales); por encima
+responde 413 sin alcanzar MS2. `proxy_read_timeout` mide inactividad **entre lecturas**,
 no un deadline total. Un stream puede durar más si sigue enviando datos; ajustar
 el intervalo a la política operativa, sin atribuir fallos no reproducidos al
 valor predeterminado de Nginx. No se configura Upgrade/WebSocket.
@@ -150,7 +159,10 @@ las tres rutas históricas, incluidos redirects 301 de prefijos sin barra y sus
 queries para GET/POST; comprueban bytes y cabeceras PDF/XLSX, preflight,
 supresión CORS, eliminación de bypass dev, errores, 404 y 502. Un primer evento
 SSE debe llegar antes de que termine el upstream. La política de timeout se
-explica por su semántica, no se espera 300 segundos en la prueba.
+explica por su semántica, no se espera 120/300 segundos en la prueba:
+`scripts/tests/test_gateway_config.py` verifica estáticamente timeouts, límite 25M y
+buffering; el runner verifica CORS de 4200/4202/4203 en MS1/MS2/MS3, export base
+GET/POST, y que 20M pasa y 26M devuelve 413.
 
 Para RED con configuración previa externa, sin leer historial Git:
 

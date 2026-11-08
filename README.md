@@ -29,6 +29,7 @@ introspección juntos. No se mantiene otra copia del JSON generado en esta entre
 | Keycloak legacy | `8080` previsto | Realm `odontoclinic-realm` conservado, no migrado |
 | RabbitMQ | `5672` / `15672` | Topologías declarativas separadas; no aprovisionado aquí |
 | MCP clínico propuesto MS2 | `3100` previsto | Distinto del MCP ERP `/mcp` |
+| n8n (alertas de cobranza) | `5678` | [automation/n8n](automation/n8n/README.md), webhook `erp-cobranza` |
 
 ### Rutas ERP
 
@@ -38,6 +39,7 @@ introspección juntos. No se mantiene otra copia del JSON generado en esta entre
 | `/mcp` (POST/GET/DELETE) | `/mcp` — Streamable HTTP autenticado |
 | `POST /api/v1/webhooks/pagofacil` | Misma URI — **mock local**, secreto propio |
 | `GET /api/v1/reports/export/{reporteId}/{format}` | Misma URI — PDF/XLSX, autorización ERP |
+| `GET`/`POST /api/v1/reports/export` | Misma URI — export binario en streaming (sin buffering) |
 | `/api/seguridad/…` | Misma URI — alias legacy, no implementa login ni health ERP |
 
 Las otras rutas devuelven 404, incluidos `/graphql` directo y Actuator. El health

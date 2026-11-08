@@ -1,0 +1,30 @@
+# n8n local para las alertas de cobranza del agente ERP (MS1).
+# Uso: docker compose -f automation/n8n/docker-compose.yml up -d
+# Luego importar workflows/cobranza-whatsapp.json (ver README.md).
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.47.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/La_Paz
+      - TZ=America/La_Paz
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      # Secreto compartido con MS1 (cabecera X-ERP-Webhook-Secret); definirlo en .env, nunca en Git.
+      - ERP_WEBHOOK_SECRET=${ERP_WEBHOOK_SECRET:?definir ERP_WEBHOOK_SECRET}
+      # WhatsApp Business Cloud API (Meta). Sin estas variables el envío falla y MS1 informa "no enviado".
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+
+volumes:
+  n8n_data:

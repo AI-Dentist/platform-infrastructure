@@ -206,10 +206,10 @@ class IntrospectionReferenceTest(unittest.TestCase):
         reference = source['references']['introspection']
         self.assertEqual(reference['source'], 'docs/graphql/introspection.json')
         self.assertEqual(reference['sha256'],
-                         'bcf2e7474d5fdbb63e26092a63eb8f003b7f7c9b08fa72f59890b843405d0fd6')
+                         '796bf2123dfd58625427a0034146e5fd968f12b9a21658b632d306a00955a6a3')
         self.assertEqual(source['availability'], 'verified-local-unpublished')
         self.assertEqual(source['publishedAncestor'],
-                         '587ba426bd684e37f85b0adaf05db4adc8ae8fd2')
+                         'a35aee86ef7d2ebedc70bba09e93496a63af469c')
         self.assertIn('/' + source['commit'] + '/', reference['url'])
         self.assertFalse((CONTRACT / 'ms1-erp.introspection.json').exists())
 
@@ -276,6 +276,18 @@ class GraphQLContractTest(unittest.TestCase):
             self.assertIn(name + '(', schema)
         self.assertNotIn('idempotencyKey', schema)
         self.assertNotIn('generarFactura', schema)
+
+
+    def test_ai_agent_and_generative_report_contract_fields(self):
+        mutations = {f['name']: f for f in self.types['Mutation']['fields']}
+        self.assertIn('ejecutarAgenteErp', mutations)
+        self.assertIn('RespuestaAgenteErp', self.types)
+        self.assertIn('AgenteInteraccionResponse', self.types)
+        report_fields = {f['name']: signature(f['type'])
+                         for f in self.types['ReporteGenerativoPayload']['fields']}
+        for required in ('titulo', 'sqlGenerado', 'filas', 'resumenAnalitico',
+                         'columnas', 'tipoGraficoSugerido', 'urlDescargaExcel', 'urlDescargaPdf'):
+            self.assertIn(required, report_fields)
 
     def test_canonical_artifact_integrity(self):
         source = load('source.json')

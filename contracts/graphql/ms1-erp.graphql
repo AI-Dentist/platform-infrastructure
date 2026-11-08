@@ -59,6 +59,11 @@ type Especialidad {
   nombre: String!
 }
 
+type JornadaOffline {
+  clavePublicaSpki: String!
+  credencial: String!
+}
+
 type McpServerStatus {
   activo: Boolean!
   protocolVersion: String!
@@ -83,6 +88,7 @@ type MovimientoCaja {
 }
 
 type Mutation {
+  activarJornadaOffline(input: ActivarJornadaOfflineInput!): JornadaOffline!
   actualizarConfiguracionEmpresa(input: EmpresaConfigInput!): EmpresaConfig!
   actualizarConsultorio(id: UUID!, input: ActualizarConsultorioInput!): Consultorio!
   actualizarEspecialidad(id: UUID!, input: ActualizarEspecialidadInput!): Especialidad!
@@ -96,6 +102,7 @@ type Mutation {
   actualizarUsuario(id: UUID!, input: ActualizarUsuarioInput!): Usuario!
   cobrarCuotaEnEfectivo(input: CobrarEfectivoInput!): Recibo!
   configurarPlanDePagos(input: ConfigurarPlanPagosInput!): OrdenCobro!
+  confirmarSyncOffline(sessionId: UUID!): OfflineSyncSession!
   crearConsultorio(input: CrearConsultorioInput!): Consultorio!
   crearEspecialidad(codigo: String!, descripcion: String, nombre: String!): Especialidad!
   crearOdontologo(input: CrearOdontologoInput!): Odontologo!
@@ -103,6 +110,8 @@ type Mutation {
   crearPaciente(input: CrearPacienteInput!): Paciente!
   crearServicioOdontologico(input: CrearServicioInput!): ServicioOdontologico!
   crearUsuario(input: CrearUsuarioInput!): Usuario!
+  "ADMIN: atomically create an ERP user, bind an existing Keycloak subject and optionally an existing dentist."
+  crearUsuarioConIdentidad(input: CrearUsuarioConIdentidadInput!): Usuario!
   ejecutarAgenteErp(instruccion: String!, modoAutonomoMonitoreo: Boolean = false): AgenteInteraccionResponse!
   eliminarConsultorio(id: UUID!): Boolean!
   eliminarEspecialidad(id: UUID!): Boolean!
@@ -110,8 +119,10 @@ type Mutation {
   eliminarPaciente(id: UUID!): Boolean!
   eliminarServicioOdontologico(id: UUID!): Boolean!
   generarQrPagoFacil(ciNitCliente: String!, cuotaId: UUID!, razonSocialCliente: String!): TransaccionQr!
+  prepararSyncOffline(input: PrepararSyncOfflineInput!): OfflineSyncChallenge!
   registrarEgresoCaja(input: RegistrarEgresoInput!): MovimientoCaja!
   simularConfirmacionQrDev(pagofacilTransactionId: String!): Recibo!
+  sincronizarOperacionOffline(input: OfflineOperationInput!): OfflineOperationReceipt!
   vincularIdentidadOdontologo(input: VincularIdentidadOdontologoInput!): UUID!
   vincularIdentidadUsuario(input: VincularIdentidadUsuarioInput!): UUID!
 }
@@ -127,6 +138,48 @@ type Odontologo {
   nombres: String!
   porcentajeComision: BigDecimal!
   telefono: String!
+}
+
+type OfflineConfirmedResult {
+  installments: [OfflineInstallmentId!]!
+  movementId: UUID
+  orderId: UUID
+  patientId: UUID
+  receiptId: UUID
+}
+
+type OfflineInstallmentId {
+  id: UUID!
+  number: Int!
+}
+
+type OfflineOperationReceipt {
+  confirmedAt: DateTime
+  operationId: UUID!
+  payloadHash: String
+  reasonCode: String
+  result: OfflineConfirmedResult
+  state: OfflineOperationState!
+  type: OfflineOperationType
+}
+
+type OfflineSyncChallenge {
+  actorId: UUID!
+  cashflowBalanceBs: BigDecimal
+  deviceId: UUID!
+  expiresAt: DateTime!
+  reauthNotBefore: DateTime!
+  sessionId: UUID!
+  workspaceId: UUID!
+}
+
+type OfflineSyncSession {
+  actorId: UUID!
+  authenticatedAt: DateTime!
+  deviceId: UUID!
+  expiresAt: DateTime!
+  sessionId: UUID!
+  workspaceId: UUID!
 }
 
 type OrdenCobro {
@@ -169,6 +222,7 @@ type Paciente {
 }
 
 type Query {
+  estadoOperacionOffline(operationId: UUID!, sessionId: UUID!): OfflineOperationReceipt!
   listarAuditLogs(limite: Int = 50): [AuditLog!]!
   listarConsultorios: [Consultorio!]!
   listarCuotasPendientesPorPaciente(pacienteId: UUID!): [CuotaPago!]!
@@ -205,12 +259,33 @@ type Recibo {
 
 type ReporteGenerativoPayload {
   columnas: [String!]!
+  "SQL ejecutado (alias: sqlGenerado)"
   consultaSqlEjecutada: String!
+  "Filas como arreglo de arreglos de texto para renderizado directo en tabla"
+  filas: [[String]]
+  "Filas serializadas como JSON para compatibilidad hacia atrás"
   filasJson: String!
   reporteId: UUID!
+  "Resumen analítico generado a partir de los datos del reporte"
+  resumenAnalitico: String!
+  "SQL ejecutado (nombre canónico S6)"
+  sqlGenerado: String!
   tipoGraficoSugerido: String!
+  "Título legible derivado de la solicitud original"
+  titulo: String!
   urlDescargaExcel: String!
   urlDescargaPdf: String!
+}
+
+type RespuestaAgenteErp {
+  accionCrudEjecutada: String
+  fechaEjecucion: DateTime!
+  instruccionOriginal: String!
+  interaccionId: UUID!
+  notificacionN8nEnviada: Boolean!
+  reporteGenerado: ReporteGenerativoPayload
+  respuestaNaturalAgente: String!
+  toolsMcpInvocadas: [String!]!
 }
 
 type ResumenFlujoCaja {
@@ -229,6 +304,7 @@ type Rol {
 
 type ServicioOdontologico {
   activo: Boolean!
+  categoria: String
   codigo: String!
   descripcion: String
   especialidad: Especialidad
@@ -281,6 +357,21 @@ enum ModalidadPago {
   CREDITO
 }
 
+enum OfflineOperationState {
+  BLOCKED
+  CONFIRMED
+  CONFLICT
+  NOT_FOUND
+  PREPARED
+}
+
+enum OfflineOperationType {
+  CASH_EXPENSE
+  CASH_PAYMENT
+  MANUAL_ORDER
+  PATIENT_CREATE
+}
+
 enum TipoMovimientoCaja {
   EGRESO
   INGRESO
@@ -297,6 +388,12 @@ scalar DateTime
 
 "RFC 4122 UUID"
 scalar UUID
+
+input ActivarJornadaOfflineInput {
+  deviceId: UUID!
+  durationSeconds: Int = 28800
+  workspaceId: UUID!
+}
 
 "estado, when present, must be DISPONIBLE, MANTENIMIENTO or INACTIVO; omitted keeps the current one"
 input ActualizarConsultorioInput {
@@ -410,6 +507,13 @@ input CrearServicioInput {
   precioBaseBs: BigDecimal!
 }
 
+"Exact active replay is read-only; conflicting profile, credentials or dentist cannot overwrite an existing identity."
+input CrearUsuarioConIdentidadInput {
+  keycloakSubject: String!
+  odontologoId: UUID
+  usuario: CrearUsuarioInput!
+}
+
 input CrearUsuarioInput {
   email: String!
   nombreCompleto: String!
@@ -427,10 +531,68 @@ input EmpresaConfigInput {
   telefonoContacto: String!
 }
 
+input OfflineCashInput {
+  ciNitCliente: String!
+  expectedOrderBalanceBs: BigDecimal!
+  expectedOrderState: EstadoOrdenCobro!
+  expectedQuotaAmountBs: BigDecimal!
+  expectedQuotaState: EstadoCuota!
+  quota: OfflineReferenceInput!
+  razonSocialCliente: String!
+  requireOpenCashRegister: Boolean = false
+}
+
+input OfflineExpenseInput {
+  categoria: String!
+  descripcion: String!
+  expectedCashflowBalanceBs: BigDecimal!
+  metodoPago: MetodoPago!
+  montoBs: BigDecimal!
+  requireOpenCashRegister: Boolean = false
+}
+
+input OfflineOperationInput {
+  cash: OfflineCashInput
+  expense: OfflineExpenseInput
+  operationId: UUID!
+  order: OfflineOrderInput
+  patient: CrearPacienteInput
+  sessionId: UUID!
+  type: OfflineOperationType!
+}
+
+input OfflineOrderInput {
+  descuentoBs: BigDecimal = 0
+  expectedTotalBs: BigDecimal!
+  items: [OfflineOrderItemInput!]!
+  observaciones: String
+  odontologoId: UUID
+  patient: OfflineReferenceInput!
+}
+
+input OfflineOrderItemInput {
+  cantidad: Int!
+  expectedUnitPriceBs: BigDecimal!
+  piezaDental: String
+  servicioId: UUID!
+}
+
+input OfflineReferenceInput {
+  id: UUID
+  installmentNumber: Int
+  operationId: UUID
+}
+
 input OrdenCobroItemInput {
   cantidad: Int!
   piezaDental: String
   servicioId: UUID!
+}
+
+input PrepararSyncOfflineInput {
+  deviceId: UUID!
+  expectedActorId: UUID!
+  workspaceId: UUID!
 }
 
 input RegistrarEgresoInput {

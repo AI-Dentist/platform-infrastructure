@@ -32,8 +32,17 @@ HEADERS = {
 }
 ORIGIN = "http://localhost:4201"
 ORIGIN_LOCAL = "http://localhost:4200"
-ALLOWED = ["Authorization", "Content-Type", "Accept", "Idempotency-Key",
+ALLOWED = ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "Idempotency-Key",
            "Mcp-Session-Id", "MCP-Protocol-Version", "Last-Event-ID", "X-Correlation-ID"]
+METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+# Shell (4200) and the remote dev servers may call every browser surface.
+BROWSER_ORIGINS = ("http://localhost:4200", "http://localhost:4201", "http://localhost:4202",
+                   "http://localhost:4203", "http://localhost:5173")
+# (path, upstream index) of every browser-facing surface.
+BROWSER_ROUTES = (("/api/erp/graphql", 0), ("/api/v1/reports/export", 0),
+                  ("/api/v1/reports/export/r/pdf", 0), ("/api/expediente/estudios/analizar-imagen", 1),
+                  ("/api/agendamiento/ml/clusters", 2))
+MB = 1024 * 1024
 EXPOSED = "Mcp-Session-Id, Content-Disposition, Idempotency-Replayed"
 PDF = b"%PDF-1.7\n\x00synthetic\xff"
 XLSX = b"PK\x03\x04\x00synthetic-xlsx\xff"
@@ -164,6 +173,12 @@ class FakeHandler(BaseHTTPRequestHandler):
         self.do_POST()
 
     def do_DELETE(self):
+        self.do_POST()
+
+    def do_PUT(self):
+        self.do_POST()
+
+    def do_PATCH(self):
         self.do_POST()
 
     def do_POST(self):
@@ -393,6 +408,7 @@ class Harness:
             self.servers[0].records.get(timeout=2)
         self.cors()
         self.local_browser_profile()
+        self.ai_traffic()
         for status in (401, 403, 500):
             result = self.request("POST", "/api/erp/graphql", headers={"X-Test-Status": str(status), "Origin": ORIGIN})
             self.check(result[0] == status and result[2] == b'{"simulated":true}', f"error {status} alterado")
@@ -472,7 +488,7 @@ class Harness:
         self.check([v for k, v in headers if k == "access-control-allow-origin"] == [origin],
                    f"{origin} {path}: ACAO preflight")
         self.check("access-control-allow-credentials" not in values, f"{origin} {path}: credenciales")
-        self.check(values.get("access-control-allow-methods") == "GET, POST, DELETE, OPTIONS", "métodos")
+        self.check(values.get("access-control-allow-methods") == METHODS, "métodos")
         self.check("origin" in values.get("vary", "").lower(), f"{origin} {path}: Vary")
         self.check(not self.upstream_calls(), f"{origin} {path}: preflight alcanzó upstream")
         status, headers, data = self.request(method, path, headers={"Origin": origin})
@@ -491,6 +507,36 @@ class Harness:
                        f"{origin} {path}: Content-Disposition")
         self.check(len(self.upstream_calls()) == 1, f"{origin} {path}: llamadas upstream")
 
+    def ai_traffic(self):
+        """S1-S3: shell and remotes reach every browser surface; image uploads up to 25M."""
+        for origin in BROWSER_ORIGINS:
+            for path, index in BROWSER_ROUTES:
+                for method in ("POST", "PATCH"):
+                    status, headers = self.preflight(path, origin, method, "Authorization, Content-Type, Origin, X-Requested-With, Idempotency-Key")
+                    values = dict(headers)
+                    self.check(status == 204, f"{origin} {path} {method}: preflight {status}")
+                    self.check(values.get("access-control-allow-origin") == origin, f"{origin} {path}: ACAO preflight")
+                    self.check(values.get("access-control-allow-methods") == METHODS, f"{origin} {path}: métodos")
+                    self.check(all(s.empty() for s in self.servers), f"{origin} {path}: preflight alcanzó upstream")
+                status, headers, _ = self.request("GET", path, headers={"Origin": origin})
+                self.check(status == 200, f"{origin} {path}: GET {status}")
+                self.check([v for k, v in headers if k.lower() == "access-control-allow-origin"] == [origin],
+                           f"{origin} {path}: ACAO duplicado/ausente")
+                self.servers[index].records.get(timeout=2)
+        for method in ("GET", "POST"):
+            self.route("/api/v1/reports/export", "/api/v1/reports/export", method=method)
+        image = b"\xff\xd8" + b"0" * (20 * MB)
+        status, _, _ = self.request("POST", "/api/expediente/estudios/analizar-imagen", image,
+                                    {"Content-Type": "image/jpeg"})
+        self.check(status == 200, f"imagen 20M rechazada: {status}")
+        command, path, received, _ = self.servers[1].records.get(timeout=10)
+        self.check(len(received) == len(image), "imagen 20M alterada")
+        status, _, _ = self.request("POST", "/api/expediente/estudios/analizar-imagen", b"0" * (26 * MB),
+                                    {"Content-Type": "image/jpeg"})
+        self.check(status == 413, f"imagen 26M no rechazada: {status}")
+        self.check(self.servers[1].records.empty(), "imagen 26M alcanzó MS2")
+        print("PASS IA: CORS shell/remotos en superficies del navegador, export base GET/POST, límite 25M")
+
     def local_browser_profile(self):
         for origin in (ORIGIN, ORIGIN_LOCAL):
             self.authorized_cors("/api/erp/graphql", origin, "POST", ", ".join(ALLOWED))
@@ -498,7 +544,7 @@ class Harness:
             self.authorized_cors("/api/v1/reports/export/r/xlsx", origin, "GET", None, XLSX)
         for origin in ("null", "https://evil.invalid", "http://localhost:4200/", "https://localhost:4200",
                        "http://localhost:42000", "http://localhost:4200.evil.invalid",
-                       "http://127.0.0.1:4200", "http://localhost:4202"):
+                       "http://127.0.0.1:4200", "http://localhost:4204"):
             for path in ("/api/erp/graphql", "/api/v1/reports/export/r/pdf"):
                 status, headers = self.preflight(path, origin)
                 self.check(status == 403 and not any(k.startswith("access-control-allow") for k, _ in headers),
