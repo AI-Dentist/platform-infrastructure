@@ -43,6 +43,26 @@ class N8nWorkflowTest(unittest.TestCase):
         self.assertIn("${ERP_WEBHOOK_SECRET:?", compose)
         self.assertNotRegex(compose, r"WHATSAPP_ACCESS_TOKEN=[A-Za-z0-9]")
 
+    def test_multichannel_workflow_mirrors_ms1_contract(self):
+        multichannel_path = ROOT / "workflows/n8n-workflow-multicanal.json"
+        self.assertTrue(multichannel_path.exists(), "Mirror workflow n8n-workflow-multicanal.json is missing")
+        flow = json.loads(multichannel_path.read_text(encoding="utf-8"))
+        nodes = {node["name"]: node for node in flow["nodes"]}
+        webhook_nodes = [n for n in flow["nodes"] if n.get("type") == "n8n-nodes-base.webhook"]
+        self.assertEqual(len(webhook_nodes), 1)
+        self.assertEqual(webhook_nodes[0]["parameters"].get("path"), "erp-notificaciones")
+        self.assertEqual(webhook_nodes[0]["parameters"].get("httpMethod"), "POST")
+        raw = json.dumps(flow, ensure_ascii=False)
+        self.assertIn("graph.facebook.com/v20.0", raw)
+        self.assertIn("n8n-nodes-base.telegram", raw)
+        self.assertIn("Aviso de Cobranza - Clínica Dental", raw)
+        self.assertIn("n8n-nodes-base.respondToWebhook", raw)
+        for source, outputs in flow["connections"].items():
+            self.assertIn(source, nodes)
+            for branch in outputs["main"]:
+                for link in branch:
+                    self.assertIn(link["node"], nodes)
+
 
 if __name__ == "__main__":
     unittest.main()

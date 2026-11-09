@@ -1,0 +1,604 @@
+{
+  "name": "ERP multichannel collection notifications",
+  "active": false,
+  "nodes": [
+    {
+      "id": "erp-notifications",
+      "name": "ERP notifications",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "erp-notificaciones",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "webhookId": "erp-notificaciones",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "configure-erp-webhook-secret",
+          "name": "ERP Webhook Secret"
+        }
+      }
+    },
+    {
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body;\nconst allowed = ['WHATSAPP', 'TELEGRAM', 'GMAIL'];\nif (!body || body.tipoEvento !== 'NOTIFICACION_COBRANZA_MULTICANAL' ||\n    !Array.isArray(body.canalesActivos) || !body.canalesActivos.length ||\n    body.canalesActivos.some(c => !allowed.includes(c))) throw new Error('Invalid notification contract');\nconst recipient = body.destinatario;\nconst financial = body.datosFinancieros;\nif (!recipient || !financial || financial.moneda !== 'BOB' || financial.simbolo !== 'Bs' ||\n    !recipient.nombre || !/^\\+[1-9][0-9]{7,14}$/.test(recipient.telefono || '') ||\n    !/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(recipient.email || '') ||\n    !Number.isFinite(financial.monto) || financial.monto <= 0 || financial.monto > 9999999999.99 ||\n    !financial.concepto || !/^\\d{4}-\\d{2}-\\d{2}$/.test(financial.fechaVencimiento || '') ||\n    typeof body.mensajeFormateado !== 'string') throw new Error('Invalid notification data');\nconst escapeHtml = value => String(value).replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\nconst telegramText = body.mensajeFormateado.replace(/[_*\\[\\]()\\x60]/g, char => '\\\\' + char);\nconst amount = financial.monto.toFixed(2);\nreturn [{json: {...body, canalesActivos: [...new Set(body.canalesActivos)],\n  mensajeTelegram: telegramText,\n  gmailHtml: '<h2>Aviso de Cobranza - Clínica Dental</h2><p>Estimado(a) ' + escapeHtml(recipient.nombre) +\n    '</p><p>Importe: <strong>Bs ' + amount + '</strong></p><p>Concepto: ' + escapeHtml(financial.concepto) +\n    '</p><p>Vencimiento: ' + escapeHtml(financial.fechaVencimiento) + '</p>'}}];"
+      }
+    },
+    {
+      "id": "enable-whatsapp",
+      "name": "Enable WHATSAPP",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        450,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "active-WHATSAPP",
+              "leftValue": "={{ $json.canalesActivos.includes('WHATSAPP') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "whatsapp-meta",
+      "name": "WhatsApp Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v20.0/{{$env.META_PHONE_NUMBER_ID}}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.META_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({messaging_product:'whatsapp',to:$json.destinatario.telefono,type:'text',text:{body:$json.mensajeFormateado}}) }}",
+        "options": {
+          "timeout": 4000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "result-whatsapp",
+      "name": "Result WHATSAPP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $('Normalize').first().json;\nconst failed = $input.all().some(item => item.json.error || item.json.statusCode >= 400);\nreturn [{json:{canal:'WHATSAPP',proveedor:'META_CLOUD_TEST_NUMBER',estado:failed?'ERROR':'ENVIADO',destino:source.destinatario.telefono}}];"
+      }
+    },
+    {
+      "id": "skip-whatsapp",
+      "name": "Skip WHATSAPP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        150
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{canal:'WHATSAPP',proveedor:'META_CLOUD_TEST_NUMBER',estado:'OMITIDO',destino:''}}];"
+      }
+    },
+    {
+      "id": "enable-telegram",
+      "name": "Enable TELEGRAM",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        450,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "active-TELEGRAM",
+              "leftValue": "={{ $json.canalesActivos.includes('TELEGRAM') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        360
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.destinatario.telegramChatId || $env.CHAT_ID }}",
+        "text": "={{ $json.mensajeTelegram }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "id": "configure-telegram-bot",
+          "name": "Clinic Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "result-telegram",
+      "name": "Result TELEGRAM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $('Normalize').first().json;\nconst failed = $input.all().some(item => item.json.error || item.json.statusCode >= 400);\nreturn [{json:{canal:'TELEGRAM',proveedor:'TELEGRAM_BOT_API',estado:failed?'ERROR':'ENVIADO',destino:source.destinatario.telegramChatId || 'Chat Clínica'}}];"
+      }
+    },
+    {
+      "id": "skip-telegram",
+      "name": "Skip TELEGRAM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        510
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{canal:'TELEGRAM',proveedor:'TELEGRAM_BOT_API',estado:'OMITIDO',destino:''}}];"
+      }
+    },
+    {
+      "id": "enable-gmail",
+      "name": "Enable GMAIL",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        450,
+        720
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "active-GMAIL",
+              "leftValue": "={{ $json.canalesActivos.includes('GMAIL') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "gmail-smtp",
+      "name": "Gmail SMTP",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        700,
+        720
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_ADDRESS }}",
+        "toEmail": "={{ $json.destinatario.email }}",
+        "subject": "Aviso de Cobranza - Clínica Dental",
+        "emailFormat": "html",
+        "html": "={{ $json.gmailHtml }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "smtp": {
+          "id": "configure-gmail-smtp",
+          "name": "Clinic Gmail SMTP"
+        }
+      }
+    },
+    {
+      "id": "result-gmail",
+      "name": "Result GMAIL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        720
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $('Normalize').first().json;\nconst failed = $input.all().some(item => item.json.error || item.json.statusCode >= 400);\nreturn [{json:{canal:'GMAIL',proveedor:'GMAIL_SMTP',estado:failed?'ERROR':'ENVIADO',destino:source.destinatario.email}}];"
+      }
+    },
+    {
+      "id": "skip-gmail",
+      "name": "Skip GMAIL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        870
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{canal:'GMAIL',proveedor:'GMAIL_SMTP',estado:'OMITIDO',destino:''}}];"
+      }
+    },
+    {
+      "id": "join-whatsapp-telegram",
+      "name": "Join WhatsApp Telegram",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        180
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "join-all-channels",
+      "name": "Join all channels",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1420,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "confirm-channels",
+      "name": "Confirm channels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(row => row.estado !== 'OMITIDO');\nreturn [{json:{exito:rows.length > 0 && rows.every(row => row.estado === 'ENVIADO'),modoEjecucion:'N8N_LIVE',resultadosPorCanal:rows}}];"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1860,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": "={{ $json.exito ? 200 : 502 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "ERP notifications": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Enable WHATSAPP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enable TELEGRAM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enable GMAIL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enable WHATSAPP": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip WHATSAPP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Meta": {
+      "main": [
+        [
+          {
+            "node": "Result WHATSAPP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enable TELEGRAM": {
+      "main": [
+        [
+          {
+            "node": "Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip TELEGRAM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram": {
+      "main": [
+        [
+          {
+            "node": "Result TELEGRAM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enable GMAIL": {
+      "main": [
+        [
+          {
+            "node": "Gmail SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip GMAIL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail SMTP": {
+      "main": [
+        [
+          {
+            "node": "Result GMAIL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result WHATSAPP": {
+      "main": [
+        [
+          {
+            "node": "Join WhatsApp Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip WHATSAPP": {
+      "main": [
+        [
+          {
+            "node": "Join WhatsApp Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result TELEGRAM": {
+      "main": [
+        [
+          {
+            "node": "Join WhatsApp Telegram",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Skip TELEGRAM": {
+      "main": [
+        [
+          {
+            "node": "Join WhatsApp Telegram",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Join WhatsApp Telegram": {
+      "main": [
+        [
+          {
+            "node": "Join all channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result GMAIL": {
+      "main": [
+        [
+          {
+            "node": "Join all channels",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Skip GMAIL": {
+      "main": [
+        [
+          {
+            "node": "Join all channels",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Join all channels": {
+      "main": [
+        [
+          {
+            "node": "Confirm channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm channels": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "versionId": "03dc6da4-ad0d-4bfb-9943-b25da6526c70",
+  "tags": []
+}

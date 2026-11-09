@@ -206,7 +206,7 @@ class IntrospectionReferenceTest(unittest.TestCase):
         reference = source['references']['introspection']
         self.assertEqual(reference['source'], 'docs/graphql/introspection.json')
         self.assertEqual(reference['sha256'],
-                         '796bf2123dfd58625427a0034146e5fd968f12b9a21658b632d306a00955a6a3')
+                         '44b752ec16feffd3f6d62d870b81f301fae255ad92227237e436168aca31e42a')
         self.assertEqual(source['availability'], 'verified-local-unpublished')
         self.assertEqual(source['publishedAncestor'],
                          'a35aee86ef7d2ebedc70bba09e93496a63af469c')
@@ -281,8 +281,20 @@ class GraphQLContractTest(unittest.TestCase):
     def test_ai_agent_and_generative_report_contract_fields(self):
         mutations = {f['name']: f for f in self.types['Mutation']['fields']}
         self.assertIn('ejecutarAgenteErp', mutations)
+        self.assertIn('verificarPagoQrPagoFacil', mutations)
+        self.assertEqual(signature(mutations['verificarPagoQrPagoFacil']['type']), 'Recibo')
+        self.assertEqual(
+            [(a['name'], signature(a['type']), a['defaultValue'])
+             for a in mutations['verificarPagoQrPagoFacil']['args']],
+            [('pagofacilTransactionId', 'String!', None)],
+        )
         self.assertIn('RespuestaAgenteErp', self.types)
         self.assertIn('AgenteInteraccionResponse', self.types)
+        self.assertIn('NotificacionMulticanalPayload', self.types)
+        self.assertIn('ResultadoCanalNotificacion', self.types)
+        agent_fields = {f['name']: signature(f['type'])
+                        for f in self.types['AgenteInteraccionResponse']['fields']}
+        self.assertEqual(agent_fields.get('notificacionMulticanal'), 'NotificacionMulticanalPayload')
         report_fields = {f['name']: signature(f['type'])
                          for f in self.types['ReporteGenerativoPayload']['fields']}
         for required in ('titulo', 'sqlGenerado', 'filas', 'resumenAnalitico',

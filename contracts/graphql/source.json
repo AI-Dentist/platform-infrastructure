@@ -1,17 +1,17 @@
 {
   "repository": "https://github.com/AI-Dentist/ms-erp",
-  "commit": "7de28d9a7247badc527e7d03520d6a5c0434615b",
+  "commit": "5d8291178f2d48d02b4646e8fa7289a09dcb3591",
   "artifacts": {
     "ms1-erp.graphql": {
       "source": "docs/graphql/schema.graphqls",
-      "sha256": "b4a817d307a7aea97d3ee16c3ba89d327f105e7e091bfcedbfb0676e314147a4"
+      "sha256": "bf9eabff56e95bb3e32c24c25edb0f2dea807d87eb1df7e184559555032c160d"
     }
   },
   "references": {
     "introspection": {
       "source": "docs/graphql/introspection.json",
-      "sha256": "796bf2123dfd58625427a0034146e5fd968f12b9a21658b632d306a00955a6a3",
-      "url": "https://raw.githubusercontent.com/AI-Dentist/ms-erp/7de28d9a7247badc527e7d03520d6a5c0434615b/docs/graphql/introspection.json"
+      "sha256": "44b752ec16feffd3f6d62d870b81f301fae255ad92227237e436168aca31e42a",
+      "url": "https://raw.githubusercontent.com/AI-Dentist/ms-erp/5d8291178f2d48d02b4646e8fa7289a09dcb3591/docs/graphql/introspection.json"
     }
   },
   "publishedAncestor": "a35aee86ef7d2ebedc70bba09e93496a63af469c",

@@ -8,6 +8,7 @@ type AgenteInteraccionResponse {
   fechaEjecucion: DateTime!
   instruccionOriginal: String!
   interaccionId: UUID!
+  notificacionMulticanal: NotificacionMulticanalPayload
   notificacionN8nEnviada: Boolean!
   reporteGenerado: ReporteGenerativoPayload
   respuestaNaturalAgente: String!
@@ -123,8 +124,15 @@ type Mutation {
   registrarEgresoCaja(input: RegistrarEgresoInput!): MovimientoCaja!
   simularConfirmacionQrDev(pagofacilTransactionId: String!): Recibo!
   sincronizarOperacionOffline(input: OfflineOperationInput!): OfflineOperationReceipt!
+  verificarPagoQrPagoFacil(pagofacilTransactionId: String!): Recibo
   vincularIdentidadOdontologo(input: VincularIdentidadOdontologoInput!): UUID!
   vincularIdentidadUsuario(input: VincularIdentidadUsuarioInput!): UUID!
+}
+
+type NotificacionMulticanalPayload {
+  exito: Boolean!
+  modoEjecucion: String!
+  resultadosPorCanal: [ResultadoCanalNotificacion!]!
 }
 
 type Odontologo {
@@ -282,10 +290,18 @@ type RespuestaAgenteErp {
   fechaEjecucion: DateTime!
   instruccionOriginal: String!
   interaccionId: UUID!
+  notificacionMulticanal: NotificacionMulticanalPayload
   notificacionN8nEnviada: Boolean!
   reporteGenerado: ReporteGenerativoPayload
   respuestaNaturalAgente: String!
   toolsMcpInvocadas: [String!]!
+}
+
+type ResultadoCanalNotificacion {
+  canal: String!
+  destino: String!
+  estado: String!
+  proveedor: String!
 }
 
 type ResumenFlujoCaja {
