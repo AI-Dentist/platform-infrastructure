@@ -517,7 +517,7 @@ class Harness:
                     self.check(status == 204, f"{origin} {path} {method}: preflight {status}")
                     self.check(values.get("access-control-allow-origin") == origin, f"{origin} {path}: ACAO preflight")
                     self.check(values.get("access-control-allow-methods") == METHODS, f"{origin} {path}: métodos")
-                    self.check(all(s.empty() for s in self.servers), f"{origin} {path}: preflight alcanzó upstream")
+                    self.check(all(s.records.empty() for s in self.servers), f"{origin} {path}: preflight alcanzó upstream")
                 status, headers, _ = self.request("GET", path, headers={"Origin": origin})
                 self.check(status == 200, f"{origin} {path}: GET {status}")
                 self.check([v for k, v in headers if k.lower() == "access-control-allow-origin"] == [origin],
