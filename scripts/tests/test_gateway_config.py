@@ -43,6 +43,12 @@ class GatewayAiLimitsTest(unittest.TestCase):
     def test_expediente_accepts_25m_images(self):
         self.assertEqual(directive(self.block("/api/expediente/"), "client_max_body_size"), "25M")
 
+    def test_slashless_agendamiento_redirects_like_other_service_prefixes(self):
+        body = self.blocks.get("= /api/agendamiento")
+        self.assertIsNotNone(body, f"missing exact slashless agendamiento location: {list(self.blocks)}")
+        self.assertEqual(directive(body, "return"), "301 /api/agendamiento/$is_args$args")
+        self.assertIsNone(directive(body, "proxy_pass"), "slashless redirect must not reach MS3")
+
     def test_report_export_is_unbuffered(self):
         body = self.block("/api/erp/graphql")
         self.assertIn("/api/v1/reports/export", list(k for k in self.blocks if "/api/erp/graphql" in k)[0])
