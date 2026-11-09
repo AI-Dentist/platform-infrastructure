@@ -1,0 +1,134 @@
+# Production API gateway (Azure). Rendered by the nginx image envsubst step:
+# only ${MS1_UPSTREAM} and ${AWS_PUBLIC_HOST} are environment placeholders;
+# every other $name is an nginx variable. TLS terminates in the Caddy edge.
+# Development/test gateway: gateway/nginx/gateway.conf (unchanged).
+
+# Docker embedded DNS: upstreams resolve per request, so the gateway starts
+# even while MS1 or the AWS edge are still down (502/504 instead of a crash loop).
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+map $http_origin $erp_origin {
+    default "";
+    "https://20-83-242-208.sslip.io" $http_origin;
+    "https://100-60-248-245.sslip.io" $http_origin;
+}
+map $http_access_control_request_headers $erp_headers_ok {
+    default 0;
+    "" 1;
+    "~*^(Authorization|Content-Type|Accept|Origin|X-Requested-With|Idempotency-Key|Mcp-Session-Id|MCP-Protocol-Version|Last-Event-ID|X-Correlation-ID)([ ]*,[ ]*(Authorization|Content-Type|Accept|Origin|X-Requested-With|Idempotency-Key|Mcp-Session-Id|MCP-Protocol-Version|Last-Event-ID|X-Correlation-ID))*$" 1;
+}
+map "$request_method|$erp_origin|$erp_headers_ok" $erp_preflight_ok {
+    default 0;
+    "~^OPTIONS\|.+\|1$" 1;
+}
+map "$request_method:$erp_preflight_ok" $erp_preflight_denied {
+    default 0;
+    "OPTIONS:0" 1;
+}
+map $erp_origin $erp_allow_methods {
+    "" "";
+    default "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+}
+map $erp_origin $erp_allow_headers {
+    "" "";
+    default "Authorization, Content-Type, Accept, Origin, X-Requested-With, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID, X-Correlation-ID";
+}
+map $erp_origin $erp_expose_headers {
+    "" "";
+    default "Mcp-Session-Id, Content-Disposition, Idempotency-Replayed";
+}
+
+server {
+    listen 8080;
+    server_name _;
+    server_tokens off;
+
+    set $ms1 http://${MS1_UPSTREAM};
+    set $aws_edge https://${AWS_PUBLIC_HOST};
+
+    add_header Access-Control-Allow-Origin $erp_origin always;
+    add_header Access-Control-Allow-Methods $erp_allow_methods always;
+    add_header Access-Control-Allow-Headers $erp_allow_headers always;
+    add_header Access-Control-Expose-Headers $erp_expose_headers always;
+    add_header Vary Origin always;
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Credentials;
+    proxy_hide_header Access-Control-Allow-Methods;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Expose-Headers;
+    proxy_hide_header Access-Control-Max-Age;
+
+    # A location that declares any proxy_set_header inherits NONE of these;
+    # only the AWS location overrides Host and therefore repeats the full set.
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    # Development header authentication never crosses the production gateway.
+    proxy_set_header X-Dev-User "";
+    proxy_connect_timeout 60s;
+    proxy_read_timeout 120s;
+
+    location = /api/seguridad { return 301 /api/seguridad/$is_args$args; }
+    location = /api/agendamiento { return 301 /api/agendamiento/$is_args$args; }
+
+    # MS1: only rewrite is /api/erp/graphql -> /graphql (query preserved).
+    # Unbuffered for report streaming and agent responses.
+    location ~ ^(/api/seguridad/|/api/erp/graphql$|/api/v1/webhooks/pagofacil$|/api/v1/reports/export$|/api/v1/reports/export/) {
+        if ($erp_preflight_denied) { return 403; }
+        if ($erp_preflight_ok) { return 204; }
+        rewrite ^/api/erp/graphql$ /graphql break;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_pass $ms1;
+    }
+
+    # MCP streamable HTTP: longer interval between reads.
+    location = /mcp {
+        if ($erp_preflight_denied) { return 403; }
+        if ($erp_preflight_ok) { return 204; }
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        proxy_pass $ms1;
+    }
+
+    # MS2 clinical AI lives in GCP (not deployed yet): explicit 503, 25M limit kept.
+    location /api/expediente/ {
+        if ($erp_preflight_denied) { return 403; }
+        if ($erp_preflight_ok) { return 204; }
+        client_max_body_size 25M;
+        default_type application/json;
+        return 503 '{"error":"MS2_NOT_DEPLOYED","detail":"Clinical AI service is pending GCP deployment"}';
+    }
+
+    # MS3 on AWS through its HTTPS edge (certificate verified, SNI = AWS host).
+    location ~ ^(/api/v1/(citas|horarios|stock)|/api/agendamiento/) {
+        if ($erp_preflight_denied) { return 403; }
+        if ($erp_preflight_ok) { return 204; }
+        proxy_set_header Host ${AWS_PUBLIC_HOST};
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Dev-User "";
+        proxy_ssl_server_name on;
+        proxy_ssl_name ${AWS_PUBLIC_HOST};
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_pass $aws_edge;
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 404;
+    }
+}

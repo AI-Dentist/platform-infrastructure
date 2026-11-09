@@ -1,0 +1,43 @@
+name: dental-platform-edge
+
+# Azure edge (TLS) and production API gateway. Other Azure services come from
+# their own repositories (ms-erp, microfrontends-web) on the same dental-net.
+services:
+  edge:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-20-83-242-208.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [dental-net]
+
+  api-gateway:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    environment:
+      MS1_UPSTREAM: ${MS1_UPSTREAM:-ms1-erp:8080}
+      AWS_PUBLIC_HOST: ${AWS_PUBLIC_HOST:-100-60-248-245.sslip.io}
+      NGINX_ENVSUBST_FILTER: "^(MS1_UPSTREAM|AWS_PUBLIC_HOST)$"
+    volumes:
+      - ./gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [dental-net]
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  dental-net:
+    external: true

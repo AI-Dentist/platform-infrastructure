@@ -1,0 +1,21 @@
+# Azure public edge: automatic HTTPS (Let's Encrypt) for {$PUBLIC_HOST}.
+# Upstreams are Docker DNS names on the external dental-net network.
+{$PUBLIC_HOST} {
+	encode zstd gzip
+	header -Server
+
+	@api path /api/* /api /mcp
+	handle @api {
+		reverse_proxy api-gateway:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /remotes/erp/* {
+		reverse_proxy mf-erp-web:80
+	}
+
+	handle {
+		reverse_proxy shell-web:80
+	}
+}
