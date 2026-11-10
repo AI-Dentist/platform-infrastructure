@@ -1,0 +1,26 @@
+name: Deploy GCP infrastructure
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/gcp/**'
+      - 'k8s/**'
+      - 'identity/keycloak/**'
+  workflow_dispatch:
+concurrency:
+  group: deploy-gcp-platform-infrastructure
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new gcpuser@35.237.1.132 \
+            'cd ~/deploy/platform-infrastructure && git pull --ff-only && docker compose --env-file ~/deploy/gcp.env -f deploy/gcp/compose.yml up -d && docker compose --env-file ~/deploy/gcp.env -f deploy/gcp/compose.yml restart edge && sudo k3s kubectl apply -f k8s/'

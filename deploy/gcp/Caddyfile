@@ -1,0 +1,29 @@
+35-237-1-132.sslip.io {
+	encode zstd gzip
+	header -Server
+	request_body {
+		max_size 25MB
+	}
+	handle /remotes/clinical/* {
+		header >Access-Control-Allow-Origin https://20-83-242-208.sslip.io
+		header Vary Origin
+		reverse_proxy 10.43.100.12:8080
+	}
+	@clinical path /api/expediente/*
+	handle @clinical {
+		@azure remote_ip 20.83.242.208
+		handle @azure {
+			reverse_proxy 10.43.100.11:8002
+		}
+		respond 403
+	}
+	handle {
+		respond 404
+	}
+}
+auth.35-237-1-132.sslip.io {
+	reverse_proxy 127.0.0.1:8081
+}
+n8n.35-237-1-132.sslip.io {
+	reverse_proxy 127.0.0.1:5678
+}

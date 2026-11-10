@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms2-clinico
+  namespace: dental-erp-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ms2-clinico}
+  template:
+    metadata:
+      labels: {app: ms2-clinico}
+    spec:
+      containers:
+        - name: ms2
+          image: docker.io/dental/ms2-clinico-ia:prod
+          imagePullPolicy: Never
+          ports: [{containerPort: 8002}]
+          envFrom:
+            - secretRef: {name: ms2-env}
+          livenessProbe:
+            httpGet: {path: /api/expediente/health, port: 8002}
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: {path: /api/expediente/health/ready, port: 8002}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 300m, memory: 768Mi}
+            limits: {cpu: '2', memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms2-clinico
+  namespace: dental-erp-prod
+spec:
+  type: ClusterIP
+  clusterIP: 10.43.100.11
+  selector: {app: ms2-clinico}
+  ports: [{port: 8002, targetPort: 8002}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ms2-clinico
+  namespace: dental-erp-prod
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: ms2-clinico}
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mf3-react-henry
+  namespace: dental-erp-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mf3-react-henry}
+  template:
+    metadata:
+      labels: {app: mf3-react-henry}
+    spec:
+      containers:
+        - name: react
+          image: docker.io/dental/mf3-react-henry:prod
+          imagePullPolicy: Never
+          ports: [{containerPort: 8080}]
+          livenessProbe:
+            httpGet: {path: /health, port: 8080}
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            initialDelaySeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mf3-react-henry
+  namespace: dental-erp-prod
+spec:
+  type: ClusterIP
+  clusterIP: 10.43.100.12
+  selector: {app: mf3-react-henry}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mf3-react-henry
+  namespace: dental-erp-prod
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: mf3-react-henry}
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
