@@ -47,7 +47,8 @@ class ProductionGatewayTest(unittest.TestCase):
         self.assertIn("proxy_read_timeout 300s;", self.blocks["= /mcp"])
         expediente = self.blocks["/api/expediente/"]
         self.assertIn("client_max_body_size 25M;", expediente)
-        self.assertIn("return 503", expediente)
+        self.assertIn("proxy_pass $gcp_edge;", expediente)
+        self.assertIn("proxy_ssl_verify on;", expediente)
         aws = next(b for k, b in self.blocks.items() if "/api/agendamiento/" in k)
         self.assertIn("proxy_ssl_verify on;", aws)
         self.assertIn("proxy_pass $aws_edge;", aws)
