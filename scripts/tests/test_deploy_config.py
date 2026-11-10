@@ -87,5 +87,14 @@ class EdgeComposeTest(unittest.TestCase):
         self.assertIn("reverse_proxy mf2-web:80", aws)
 
 
+    def test_workflows_restart_services_with_single_file_config_mounts(self):
+        # git pull replaces Caddyfile/gateway template with a new inode; a running
+        # container keeps the old single-file bind mount until it is restarted.
+        workflows = DEPLOY.parent / ".github/workflows"
+        aws = (workflows / "deploy-aws.yml").read_text(encoding="utf-8")
+        azure = (workflows / "deploy-azure.yml").read_text(encoding="utf-8")
+        self.assertIn("docker compose restart edge &&", aws)
+        self.assertIn("docker compose restart edge api-gateway &&", azure)
+
 if __name__ == "__main__":
     unittest.main()

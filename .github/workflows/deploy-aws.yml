@@ -25,4 +25,4 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -T 15 -t ed25519 "$HOST" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$USER@$HOST" \
-            'cd /home/ubuntu/deploy/platform-infrastructure && git pull --ff-only && docker compose up -d --build --remove-orphans && docker compose ps'
+            'cd /home/ubuntu/deploy/platform-infrastructure && git pull --ff-only && docker compose up -d --build --remove-orphans && docker compose restart edge && docker compose ps'
