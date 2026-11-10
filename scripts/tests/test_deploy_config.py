@@ -80,7 +80,10 @@ class EdgeComposeTest(unittest.TestCase):
         self.assertIn("reverse_proxy shell-web:80", azure)
         aws = (DEPLOY / "aws/Caddyfile").read_text(encoding="utf-8")
         self.assertIn("reverse_proxy ms3-agenda:8001", aws)
-        self.assertIn("header Access-Control-Allow-Origin {$SHELL_ORIGIN}", aws)
+        # mf2-web's nginx also emits Access-Control-Allow-Origin; a deferred (>) edge header
+        # replaces it, because browsers reject a response carrying the header twice.
+        self.assertIn("header >Access-Control-Allow-Origin {$SHELL_ORIGIN}", aws)
+        self.assertNotIn("header Access-Control-Allow-Origin", aws)
         self.assertIn("reverse_proxy mf2-web:80", aws)
 
 

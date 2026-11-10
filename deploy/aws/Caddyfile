@@ -7,9 +7,10 @@
 		reverse_proxy ms3-agenda:8001
 	}
 
-	# The shell (Azure origin) imports these ES modules cross-origin.
+	# The shell (Azure origin) imports these ES modules cross-origin. The upstream nginx
+	# also sets the header; the deferred (>) form replaces it, since browsers reject two values.
 	handle /remotes/operations/* {
-		header Access-Control-Allow-Origin {$SHELL_ORIGIN}
+		header >Access-Control-Allow-Origin {$SHELL_ORIGIN}
 		header Vary Origin
 		reverse_proxy mf2-web:80
 	}
